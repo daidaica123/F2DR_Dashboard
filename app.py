@@ -127,16 +127,19 @@ if not os.path.exists(HTML):
         "```\npy -3.10 _build/build_van_hanh.py --csv data/<file>.csv\n```")
     st.stop()
 
-nhung(doc_html(HTML))
-
 # ══════════ TRỢ LÝ HỎI ĐÁP ══════════
-# Panel chat nổi ở góc phải dưới. Toàn bộ việc gọi Gemini chạy ở server này,
-# nên khoá API không bao giờ xuống trình duyệt.
+# Vẽ TRƯỚC dashboard, không phải sau.
+#
+# CSS kéo khối này ra khỏi luồng trang rồi ghim vào góc phải dưới. Nhưng nếu
+# vì lý do gì đó CSS không ăn (Streamlit đổi cấu trúc DOM chẳng hạn), khối
+# sẽ nằm đúng chỗ nó được vẽ. Vẽ sau dashboard thì chỗ đó là *dưới* một
+# iframe cao 3400px — người dùng cuộn mỏi tay cũng không thấy.
 try:
     from chatbot import khung_chat
     khung_chat.ve()
 except Exception as e:                      # chat hỏng thì dashboard vẫn chạy
-    st.session_state.setdefault("_loi_chat_da_bao", False)
-    if not st.session_state["_loi_chat_da_bao"]:
-        st.session_state["_loi_chat_da_bao"] = True
-        st.caption("Trợ lý hỏi đáp chưa sẵn sàng: %s" % e)
+    with st.expander("⚠️ Trợ lý hỏi đáp chưa sẵn sàng", expanded=False):
+        st.caption(str(e))
+        st.caption("Dashboard bên dưới vẫn dùng bình thường.")
+
+nhung(doc_html(HTML))

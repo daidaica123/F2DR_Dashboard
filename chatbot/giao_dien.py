@@ -16,8 +16,18 @@ CSS = """
 <style>
 /* ═══════════ PANEL CHAT NOI ═══════════ */
 
-/* Khoi bao ngoai: ghim goc phai duoi, tren cung moi thu khac */
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc){
+/* Khoi bao ngoai: ghim goc phai duoi, tren cung moi thu khac.
+
+   Selector KHONG duoc phu thuoc do sau DOM. Ban dau viet
+   ":has(> div > div > div > .f2dr-chat-moc)" — dung ba cap div — va no
+   khop hay khong la tuy phien ban Streamlit. Khong khop thi panel roi xuong
+   DUOI CUNG trang, sau ca iframe cao 3400px: nguoi dung khong thay dau ca.
+
+   Cach viet duoi day doc lap do sau:
+     :has(.f2dr-chat-moc)                    -> moi khoi to bao ngoai deu khop
+     :not(:has(<khoi con> .f2dr-chat-moc))   -> loai het, chi con khoi TRONG CUNG
+*/
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc)){
   position: fixed !important;
   right: 22px; bottom: 22px;
   width: 400px; max-width: calc(100vw - 32px);
@@ -36,7 +46,7 @@ div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc){
   to  { opacity:1; transform: none }
 }
 @media (prefers-reduced-motion: reduce){
-  div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc){
+  div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc)){
     animation: none }
 }
 
@@ -73,7 +83,7 @@ div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc){
 }
 
 /* Vung tin nhan */
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   div[data-testid="stVerticalBlockBorderWrapper"]{ background:transparent }
 
 .f2dr-khung{ max-height: 46vh; overflow-y:auto; padding:4px 4px 0 }
@@ -146,9 +156,9 @@ div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
 .f2dr-the.canh{ color:#ff9550; border-color:rgba(255,149,80,.34) }
 
 /* Nut goi y */
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   div[data-testid="stHorizontalBlock"]{ gap:6px !important; padding:0 12px }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   .stButton button{
   background:#111c33 !important; border:1px solid #2a3f6b !important;
   color:#9fb3d4 !important; font-size:10.5px !important;
@@ -157,47 +167,47 @@ div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
   white-space:normal !important; line-height:1.35 !important;
   transition: all .13s;
 }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   .stButton button:hover{
   border-color:#2ee8ff !important; color:#2ee8ff !important;
   background:rgba(46,232,255,.07) !important;
 }
 
 /* O nhap */
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   div[data-testid="stChatInput"]{
   background:#0a1020 !important; border:1px solid #2a3f6b !important;
   border-radius:22px !important; margin:9px 12px 12px !important;
 }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   div[data-testid="stChatInput"]:focus-within{
   border-color:#2ee8ff !important;
   box-shadow:0 0 0 3px rgba(46,232,255,.11) !important;
 }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   div[data-testid="stChatInput"] textarea{
   color:#eef3fe !important; font-size:12.5px !important;
 }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   div[data-testid="stChatInput"] textarea::placeholder{ color:#5f6f8f !important }
 
 /* Khoi nguon so lieu gap duoc */
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   details{
   margin:0 15px 8px; border:1px solid #1c2a47; border-radius:7px;
   background:#0a1020;
 }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   summary{
   font-family: ui-monospace, Consolas, monospace; font-size:10px;
   color:#7a88a5; padding:6px 10px; cursor:pointer;
 }
-div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc)
+div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc))
   summary:hover{ color:#2ee8ff }
 
 /* Man hinh hep: panel chiem gan het be ngang */
 @media (max-width: 640px){
-  div[data-testid="stVerticalBlock"]:has(> div > div > div > .f2dr-chat-moc){
+  div[data-testid="stVerticalBlock"]:has(.f2dr-chat-moc):not(:has(div[data-testid="stVerticalBlock"] .f2dr-chat-moc)){
     right:10px; left:10px; bottom:10px; width:auto;
   }
   .f2dr-khung{ max-height:52vh }

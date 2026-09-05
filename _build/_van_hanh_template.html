@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>F2DR VẬN HÀNH — Theo dõi alert định kỳ</title>
+<style>
+:root{
+  --bg:#070b14; --bg2:#0b1120; --panel:#0e1628; --panel2:#111c33;
+  --border:#1c2a47; --border-hi:#2a3f6b;
+  --text:#eef3fe; --dim:#a8b8da; --faint:#6e80a8;
+  --accent:#2ee8ff; --green:#2ee98a; --yellow:#ffd84f; --orange:#ff9550;
+  --red:#ff4d6b; --purple:#b98cff;
+  --low:#2ee98a; --med:#ffd84f; --high:#ff4d6b; --vh:#b98cff;
+  --mono:'Consolas','Cascadia Code',monospace;
+  --sans:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:linear-gradient(180deg,var(--bg),var(--bg2));color:var(--text);
+     font-family:var(--sans);font-size:13px;padding:18px 20px 60px}
+h1{font-size:17px;margin:0 0 3px;letter-spacing:.4px}
+h2{font-size:13px;margin:0;letter-spacing:.3px}
+h3{font-size:12px;margin:0 0 8px;color:var(--dim);font-weight:600;letter-spacing:.3px}
+.sub{color:var(--faint);font-size:11.5px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px;flex-wrap:wrap}
+.card-sub{color:var(--faint);font-size:11px;display:block;margin-top:2px}
+.topbar{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+.badge{font-family:var(--mono);font-size:10.5px;color:var(--accent);border:1px solid var(--border-hi);
+       border-radius:5px;padding:3px 8px;background:rgba(46,232,255,.07)}
+
+/* ===== control ===== */
+.ctl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.thr-row{display:grid;grid-template-columns:82px 1fr 52px;align-items:center;gap:9px;margin-bottom:9px}
+.thr-lab{font-size:11.5px;font-weight:600;display:flex;align-items:center;gap:6px}
+.dot{width:9px;height:9px;border-radius:2px;display:inline-block}
+.thr-val{font-family:var(--mono);font-size:14px;text-align:right;font-weight:700}
+input[type=range]{width:100%;accent-color:var(--accent);height:16px}
+input[type=number]{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+      border-radius:5px;padding:4px 6px;font-family:var(--mono);font-size:11.5px;width:100%}
+select{background:var(--panel2);border:1px solid var(--border);color:var(--text);border-radius:5px;
+       padding:4px 7px;font-size:11.5px;font-family:var(--sans)}
+button{background:var(--panel2);border:1px solid var(--border-hi);color:var(--text);border-radius:6px;
+       padding:5px 11px;font-size:11.5px;cursor:pointer;font-family:var(--sans)}
+button:hover{border-color:var(--accent);color:var(--accent)}
+button.on{background:rgba(46,232,255,.13);border-color:var(--accent);color:var(--accent)}
+.btn-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* ===== KPI ===== */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:9px;margin-bottom:12px}
+.kpi{background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:9px 11px}
+.kpi .k{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+.kpi .v{font-family:var(--mono);font-size:19px;font-weight:700;margin-top:2px}
+.kpi .x{font-size:10.5px;color:var(--dim);margin-top:1px}
+
+/* ===== histogram ===== */
+.hist-wrap{display:flex;gap:8px}
+.hist-yaxis{width:44px;position:relative;height:230px;flex:0 0 44px}
+.ytick{position:absolute;right:4px;transform:translateY(-50%);font-family:var(--mono);
+       font-size:9.5px;color:var(--faint)}
+.hist-body{flex:1;position:relative}
+.hist{height:230px;display:flex;align-items:flex-end;gap:1px;border-bottom:1px solid var(--border-hi);
+      position:relative}
+.hist-stack{position:relative}
+#hgrid{position:absolute;left:0;right:0;top:0;height:230px;pointer-events:none;z-index:0}
+.gline{position:absolute;left:0;right:0;height:1px;background:rgba(255,255,255,.05)}
+.hist .bar{flex:1;min-height:0;border-radius:2px 2px 0 0;position:relative;transition:height .12s}
+.hist .bar:hover{outline:1px solid #fff6}
+.vline{position:absolute;top:0;bottom:0;width:2px;pointer-events:none;z-index:3}
+.vline span{position:absolute;top:-1px;left:3px;font-family:var(--mono);font-size:9.5px;
+            background:var(--panel);padding:1px 4px;border-radius:3px;white-space:nowrap}
+.hticks{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9.5px;
+        color:var(--faint);margin-top:4px}
+
+/* ===== stack bar ===== */
+.stackbar{display:flex;height:34px;border-radius:6px;overflow:hidden;border:1px solid var(--border);margin-bottom:7px}
+.stackbar div{display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+              color:#04121e;transition:width .12s;overflow:hidden;white-space:nowrap}
+.stackbar div.s1{font-size:9.5px;letter-spacing:-.3px}
+.stackbar div.s2{font-size:8.5px;letter-spacing:-.5px}
+/* nhãn cho lát quá hẹp: đặt nổi phía trên, có gạch chỉ xuống */
+.stackwrap{position:relative;padding-top:15px}
+.tiplab{position:absolute;top:0;transform:translateX(-50%);font-family:var(--mono);font-size:9.5px;
+        font-weight:700;white-space:nowrap;pointer-events:none}
+.tiplab:after{content:'';position:absolute;left:50%;top:11px;width:1px;height:5px;background:currentColor;opacity:.6}
+
+/* ===== đồng hồ ===== */
+.live{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;
+      margin-right:6px;vertical-align:middle;box-shadow:0 0 6px var(--green);animation:bl 2s infinite}
+@keyframes bl{0%,100%{opacity:1}50%{opacity:.35}}
+.stacklegend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--dim)}
+.stacklegend b{font-family:var(--mono);color:var(--text)}
+
+/* ===== table ===== */
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th,td{padding:5px 7px;text-align:right;border-bottom:1px solid var(--border)}
+th{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.4px;
+   font-weight:600;position:sticky;top:0;background:var(--panel);z-index:2}
+td.l,th.l{text-align:left}
+tbody tr:hover{background:rgba(46,232,255,.04)}
+.num{font-family:var(--mono)}
+.pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10px;font-weight:700}
+.p-low{background:rgba(46,233,138,.16);color:var(--low)}
+.p-med{background:rgba(255,216,79,.16);color:var(--med)}
+.p-high{background:rgba(255,77,107,.16);color:var(--high)}
+.p-vh{background:rgba(185,140,255,.16);color:var(--vh)}
+.scroll{max-height:420px;overflow:auto}
+.mini{height:5px;border-radius:3px;display:inline-block;vertical-align:middle}
+/* thanh cơ cấu trong bảng theo ngày — dài nên phải GIẢM bão hoà, tránh chói mắt.
+   Lát dùng màu mờ (opacity .42) + vạch ngăn tối giữa các lát + chữ sáng thay vì chữ đen. */
+.cocau{display:flex;align-items:center;gap:9px}
+.daybar{display:flex;flex:1;min-width:150px;height:13px;border-radius:3px;overflow:hidden;
+        border:1px solid var(--border);background:#0a1020}
+.daybar i{display:block;transition:width .12s;opacity:.5}
+.daybar i+i{box-shadow:inset 1px 0 0 var(--panel)}      /* vạch ngăn giữa 2 lát */
+tbody tr:hover .daybar i{opacity:.85}                    /* rê chuột mới lên màu đậm */
+
+
+
+/* ===== chọn công thức score ===== */
+.fx-grid{display:grid;grid-template-columns:minmax(280px,1fr) 1.6fr;gap:18px}
+@media(max-width:900px){.fx-grid{grid-template-columns:1fr}}
+.dimmed{opacity:.32;pointer-events:none;filter:grayscale(.75);transition:opacity .18s}
+.formula{font-family:var(--mono);font-size:11.5px;color:var(--accent);background:rgba(46,232,255,.05);border:1px solid var(--border-hi);border-radius:7px;
+         padding:9px 12px;line-height:1.85;overflow-x:auto;white-space:nowrap}
+.formula b{color:var(--yellow);font-weight:700}
+.formula .off{color:var(--faint)}
+#fxCard.newmode{border-color:var(--border-hi);box-shadow:0 0 0 1px rgba(46,232,255,.12) inset}
+.cmp{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;margin-top:7px}
+.cmp b{font-family:var(--mono)}
+
+/* ===== thanh phân bố Impact trong bảng KB ===== */
+.kbbar{display:flex;height:9px;border-radius:3px;overflow:hidden;background:#0a1020;
+       border:1px solid var(--border);min-width:170px}
+.kbbar div{transition:width .12s}
+.kbpct{font-family:var(--mono);font-size:9px;margin-top:2px;letter-spacing:.2px}
+.off{color:var(--faint)}
+
+/* ===== dòng backtest ===== */
+tr.btrow{background:rgba(185,140,255,.07)}
+tr.btrow td{border-top:1px solid var(--purple);border-bottom:1px solid var(--purple)}
+.btag{font-family:var(--mono);font-size:8.5px;background:rgba(185,140,255,.2);color:var(--vh);
+      padding:1px 5px;border-radius:3px;letter-spacing:.3px;vertical-align:middle}
+
+/* ===== ô chọn số ngày backtest ===== */
+.hobox{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:6px;
+       background:rgba(185,140,255,.09);border:1px solid rgba(185,140,255,.4)}
+.holab{color:var(--vh);font-size:10.5px;font-weight:600;white-space:nowrap}
+.hobox input[type=number]{width:36px;padding:2px 3px;text-align:center;font-size:12px;
+       font-weight:700;color:var(--vh);background:var(--panel2);
+       border:1px solid rgba(185,140,255,.35);-moz-appearance:textfield}
+.hobox input[type=number]::-webkit-outer-spin-button,
+.hobox input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.hostep{padding:0;width:19px;height:19px;line-height:1;font-size:13px;font-weight:700;
+        border-radius:4px;border-color:rgba(185,140,255,.4);color:var(--vh);
+        background:rgba(185,140,255,.12)}
+.hostep:hover{background:rgba(185,140,255,.28);border-color:var(--purple);color:#fff}
+
+/* ===== icon trợ giúp + tooltip ===== */
+.ic{display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;
+    border-radius:50%;border:1px solid var(--faint);color:var(--faint);font-size:9.5px;
+    font-style:normal;font-weight:700;font-family:var(--mono);cursor:help;
+    vertical-align:middle;margin-left:5px;transition:.15s;user-select:none}
+.ic:hover{border-color:var(--accent);color:var(--accent);background:rgba(46,232,255,.12)}
+#tip{position:fixed;z-index:99;max-width:430px;background:#0c1424;
+     border:1px solid var(--border-hi);border-left:3px solid var(--accent);border-radius:8px;
+     padding:11px 13px;font-size:11.5px;line-height:1.7;color:var(--dim);
+     box-shadow:0 10px 34px rgba(0,0,0,.6);display:none;pointer-events:none}
+#tip b{color:var(--text)}
+/* biến thể gọn cho lát donut / chú giải — bám theo con trỏ */
+/* lát donut / chú giải: chữ nổi trần, KHÔNG khung — tránh viền vẽ hụt khi
+   nội dung ngắn, và không che biểu đồ */
+#tip.mini{max-width:none;width:max-content;white-space:nowrap;padding:0;
+          font-size:12px;line-height:1.5;background:none;border:0;box-shadow:none;
+          text-shadow:0 1px 6px #070b14, 0 0 14px #070b14, 0 0 3px #070b14}
+#tip.mini .big{font-family:var(--mono);font-size:15px;color:var(--text);font-weight:700}
+#tip.mini b{font-size:12.5px}
+#tip .tt{display:block;color:var(--accent);font-weight:700;font-size:11px;
+         letter-spacing:.3px;margin-bottom:5px;text-transform:uppercase}
+#tip .eg{display:block;margin-top:7px;padding:7px 9px;background:rgba(46,232,255,.06);
+         border-radius:5px;font-size:11px;color:var(--text);border-left:2px solid var(--border-hi)}
+#tip .eg em{font-style:normal;color:var(--faint)}
+#tip .egbar{display:inline-flex;height:8px;width:150px;border-radius:3px;overflow:hidden;
+     border:1px solid var(--border);vertical-align:middle;margin:0 5px}
+#tip .egbar i{display:block;height:100%}
+#tip code{font-family:var(--mono);font-size:10.5px;color:var(--yellow)}
+
+/* ===== layout ===== */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:1150px){.grid2,.grid3{grid-template-columns:1fr}}
+.note{font-size:11px;color:var(--faint);line-height:1.65;margin-top:9px;
+      border-left:2px solid var(--border-hi);padding-left:9px}
+.warn{border-left-color:var(--orange);color:#d9c3a8}
+.tag{font-family:var(--mono);font-size:10px;color:var(--accent)}
+.spark{display:flex;align-items:flex-end;gap:1px;height:26px}
+.spark i{flex:1;background:var(--accent);opacity:.55;border-radius:1px 1px 0 0;min-height:1px}
+
+/* ===== ⑪ nguồn tiền — donut ===== */
+.vbc-grid{display:grid;grid-template-columns:270px 1fr;gap:26px;align-items:center}
+@media(max-width:1150px){.vbc-grid{grid-template-columns:1fr}}
+.vbc-left{display:flex;flex-direction:column;align-items:center;gap:12px;
+  padding-top:22px}   /* chừa chỗ cho nhãn lát nổi phía trên donut */
+#vbcDonut{width:212px;height:212px;overflow:visible}
+/* lát sáng hẳn lên + nhích ra ngoài khi rê chuột */
+#vbcDonut path{cursor:pointer;transform-origin:100px 100px;
+  transition:opacity .14s, filter .14s, transform .14s}
+#vbcDonut path.hot{opacity:1 !important;transform:scale(1.055);
+  filter:drop-shadow(0 0 9px currentColor) brightness(1.12)}
+#vbcDonut:hover path:not(.hot){opacity:.26 !important}   /* các lát còn lại mờ đi */
+#vbcDonut .ctr-n{font:700 27px var(--mono);fill:var(--text)}
+#vbcDonut .ctr-l{font:400 9.5px var(--sans);fill:var(--faint);letter-spacing:.7px}
+.vbc-leg{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px;font-size:11px;width:100%;padding:0 6px}
+.vbc-leg span{display:flex;align-items:center;gap:6px;color:var(--dim);cursor:pointer;
+  padding:2px 5px;margin:-2px -5px;border-radius:4px;transition:background .12s,color .12s}
+.vbc-leg span:hover{background:rgba(255,255,255,.05);color:var(--text)}
+.vbc-leg i{width:9px;height:9px;border-radius:2px;flex:none}
+.vbc-leg b{font-family:var(--mono);color:var(--text);margin-left:auto}
+
+/* ═══════════ BỔ SUNG CHO BẢN VẬN HÀNH ═══════════ */
+
+/* --- bảng: cột text vừa đủ, cột biểu đồ chiếm phần còn lại --- */
+table.fix{table-layout:fixed}
+th.w-ten{width:auto}                    /* tên KB: co giãn */
+th.w-num{width:74px}                    /* các cột số: vừa đủ 6 chữ số */
+th.w-num-s{width:58px}
+th.w-pill{width:82px}
+/* tên KB: cắt gọn bằng ... nhưng CHỪA chỗ cho nhãn đột biến/bắn dày ở cuối,
+   nếu không nhãn sẽ bị cắt cụt thành "đột b…".
+   Flex đặt ở DIV bên trong chứ không ở chính <td>: một <td> bị display:flex sẽ
+   thoát khỏi cách tính bề rộng của bảng, kéo cột đầu phình ra và làm các cột số
+   lệch khỏi tiêu đề. */
+td.ten{white-space:nowrap;max-width:0}
+td.ten>.tw{display:flex;align-items:center;gap:0;min-width:0}
+td.ten .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+td.ten .mk{flex:none}
+
+/* --- biểu đồ cột lớn theo ngày (mục ③) ---
+   Khe hở + bo góc + cỡ chữ nhãn ĐỀU co theo số cột (biến --gap, --fs do JS đặt),
+   nên 7 cột hay 30 cột đều kín khung, không bị hụt hay chen chúc. */
+.daychart{display:flex;align-items:flex-end;gap:var(--gap,6px);height:200px;
+          border-bottom:1px solid var(--border-hi);padding-top:17px}
+.daychart .col{flex:1;min-width:0;display:flex;flex-direction:column;
+               justify-content:flex-end;height:100%;position:relative;cursor:pointer}
+.daychart .bar2{border-radius:var(--rad,3px) var(--rad,3px) 0 0;
+                background:linear-gradient(180deg,var(--accent),#1b7f96);
+                min-height:2px;transition:filter .12s}
+.daychart .col:hover .bar2{filter:brightness(1.4)}
+/* nhãn số NẰM NGAY TRÊN ĐẦU CỘT, trôi lên xuống theo chiều cao cột */
+.daychart .vlab{position:absolute;left:-2px;right:-2px;text-align:center;
+                font-family:var(--mono);font-size:var(--fs,10px);color:var(--dim);
+                white-space:nowrap;pointer-events:none;line-height:1}
+.daychart .col:hover .vlab{color:var(--text);font-weight:700}
+/* cột cao nhất kỳ tô cam cho nổi */
+.daychart .col.pk .bar2{background:linear-gradient(180deg,var(--orange),#9c5220)}
+.daychart .col.pk .vlab{color:var(--orange);font-weight:700}
+.dayx{display:flex;gap:var(--gap,6px);margin-top:6px}
+.dayx span{flex:1;min-width:0;text-align:center;font-family:var(--mono);
+           font-size:var(--fsx,9.5px);color:var(--faint);white-space:nowrap;overflow:hidden}
+.dayx span.we{color:var(--purple);opacity:.85}   /* cuối tuần */
+.dayavg{position:absolute;left:0;right:0;border-top:1px dashed var(--orange);opacity:.5;
+        pointer-events:none}
+.dayavg b{position:absolute;right:0;top:-14px;font-family:var(--mono);font-size:9.5px;
+          color:var(--orange);opacity:.8;background:var(--panel);padding:0 4px}
+
+/* --- nhóm nghiệp vụ: dạng BẢNG (dòng 0 alert làm mờ) --- */
+tr.nh0 td{color:var(--faint)}
+tr.nh0 td b{color:var(--faint)}
+.nhbar{display:block;height:9px;border-radius:3px;background:#0a1020;
+       border:1px solid var(--border);overflow:hidden;min-width:80px}
+.nhbar i{display:block;height:100%;background:var(--accent);opacity:.7}
+tbody tr:hover .nhbar i{opacity:1}
+/* tỉ lệ KB nổ / KB đã cấu hình — chấm tròn nhỏ, nhìn phát biết thiếu bao nhiêu */
+.kbdots{display:inline-flex;gap:2.5px;align-items:center;vertical-align:middle}
+.kbdots i{width:6px;height:6px;border-radius:50%;background:var(--border-hi)}
+.kbdots i.on{background:var(--accent)}
+
+/* --- MA TRẬN kịch bản × ngày --- */
+.heat{border-collapse:separate;border-spacing:2px;width:100%}
+.heat th.d{text-align:center;font-family:var(--mono);font-size:9.5px;color:var(--faint);
+           padding:0 0 4px;font-weight:600;white-space:nowrap;text-transform:none;
+           letter-spacing:0;background:none;position:static}
+.heat th.d.we{color:var(--purple);opacity:.8}
+.heat th.d.hot{color:var(--orange)}          /* cột của ngày cao nhất */
+.heat td.c{height:21px;border-radius:3px;text-align:center;font-family:var(--mono);
+           font-size:10px;border:0;padding:0;cursor:default}
+.heat td.c.max{box-shadow:inset 0 0 0 1.5px var(--orange)}   /* ô đỉnh của dòng */
+/* tên KB: bọc trong div flex (KHÔNG đặt flex thẳng lên td — td có max-width:0
+   thì flex item co về 0, chữ biến mất sạch). */
+.heat td.nm{max-width:0;padding:0 8px 0 2px;border:0}
+.heat td.nm>div{display:flex;align-items:center;min-width:0}
+.heat td.nm span.nm2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.heat td.nm .mk{flex:none}
+.heat tbody tr:hover td.nm{color:var(--accent)}
+/* dòng ngăn nhóm nghiệp vụ — chỉ hiện khi sắp theo nhóm */
+.heat tr.grp td{background:none;border:0;padding:9px 2px 3px;font-size:10.5px;
+                font-weight:700;color:var(--accent);letter-spacing:.3px;
+                text-transform:uppercase}
+.heat tr.grp td.l{text-align:left;border-bottom:1px solid var(--border-hi)}
+.heat tr.grp td.c{font-family:var(--mono);color:var(--dim);font-weight:700;
+                  text-align:right;border-bottom:1px solid var(--border-hi)}
+.heat tr.grp .gn{font-weight:400;color:var(--faint);text-transform:none;
+                 letter-spacing:0;margin-left:7px;font-size:10px}
+.heat tr.grp:hover td.nm{color:inherit}
+.heat col.dcol{width:var(--dw)}
+.heat tfoot td{border:0;padding-top:6px;font-family:var(--mono);font-size:10px;
+               color:var(--dim);text-align:center;font-weight:700}
+.heat tfoot td.l{text-align:left;color:var(--faint);font-weight:600}
+
+/* --- ⑦ ghi chép điều tra --- */
+.gc-empty{border:1px dashed var(--border-hi);border-radius:9px;padding:26px 22px;
+          text-align:center;color:var(--faint);font-size:12px;line-height:1.8}
+.gc-empty b{color:var(--dim);display:block;font-size:13px;margin-bottom:7px}
+.gc-empty code{font-family:var(--mono);font-size:11px;color:var(--accent);
+               background:rgba(46,232,255,.07);padding:2px 7px;border-radius:4px}
+.gc-item{border-left:2px solid var(--accent);padding:2px 0 2px 13px;margin-bottom:15px}
+.gc-item .gc-d{font-family:var(--mono);font-size:10.5px;color:var(--accent);
+               letter-spacing:.4px;margin-bottom:3px}
+.gc-item .gc-t{font-size:12.5px;font-weight:600;color:var(--text);margin-bottom:5px}
+.gc-item .gc-b{font-size:11.5px;color:var(--dim);line-height:1.75}
+.gc-item .gc-b b{color:var(--text)}
+.gc-tag{display:inline-block;font-family:var(--mono);font-size:9.5px;padding:1px 7px;
+        border-radius:4px;margin-right:5px;background:var(--panel2);
+        border:1px solid var(--border);color:var(--faint)}
+
+/* --- hàng mở rộng chi tiết KH --- */
+tr.det>td{background:#0a1120;padding:9px 13px}
+.detkb{display:flex;flex-wrap:wrap;gap:5px}
+.detkb span{background:var(--panel2);border:1px solid var(--border);border-radius:11px;
+            padding:2px 9px;font-size:10.5px;color:var(--dim)}
+.detkb span b{font-family:var(--mono);color:var(--accent);margin-left:4px}
+tr.kh-row{cursor:pointer}
+tr.kh-row td:first-child>.tw:before{content:'▸';color:var(--faint);margin-right:6px;
+            flex:none;transition:transform .15s;display:inline-block}
+tr.kh-row.op td:first-child>.tw:before{transform:rotate(90deg);color:var(--accent)}
+
+/* --- dấu bất thường --- */
+.mk{font-family:var(--mono);font-size:9px;padding:1px 5px;border-radius:3px;
+    margin-left:5px;letter-spacing:.2px;white-space:nowrap}
+.mk-dot{background:rgba(255,149,80,.17);color:var(--orange);border:1px solid rgba(255,149,80,.35)}
+.mk-day{background:rgba(255,77,107,.15);color:var(--red);border:1px solid rgba(255,77,107,.32)}
+.mk-kh{background:rgba(185,140,255,.16);color:var(--vh);border:1px solid rgba(185,140,255,.34)}
+
+/* ═══ KPI LỚN — hàng số tổng quan, đây là thứ lead nhìn đầu tiên ═══ */
+.kpibig{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:16px}
+@media(max-width:1450px){.kpibig{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:820px){.kpibig{grid-template-columns:repeat(2,1fr)}}
+.kb2{position:relative;background:linear-gradient(160deg,var(--panel2),#0c1526);
+     border:1px solid var(--border);border-radius:12px;padding:17px 19px 15px;
+     overflow:hidden;transition:border-color .16s,transform .16s}
+.kb2:hover{border-color:var(--border-hi);transform:translateY(-1px)}
+/* dải màu mỏng bên trái — mã màu theo ý nghĩa của ô */
+.kb2:before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cc)}
+/* vệt sáng mờ góc phải, cho ô đỡ phẳng */
+.kb2:after{content:'';position:absolute;right:-38px;top:-38px;width:110px;height:110px;
+           border-radius:50%;background:var(--cc);opacity:.07;pointer-events:none}
+.kb2 .k{color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.9px;
+        font-weight:600;display:flex;align-items:center;gap:6px;padding-right:52px;
+        white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kb2 .v{font-family:var(--mono);font-size:34px;font-weight:700;line-height:1.12;
+        margin:7px 0 3px;letter-spacing:-1px;color:var(--cc)}
+.kb2 .v small{font-size:17px;color:var(--faint);font-weight:400;letter-spacing:0}
+/* dòng chú thích: ép đúng 2 dòng để 6 ô luôn bằng nhau, dài hơn thì cắt bằng … */
+.kb2 .u{font-size:11px;color:var(--dim);line-height:1.5;min-height:33px;
+        display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.kb2 .u b{font-family:var(--mono);color:var(--text);font-weight:600}
+.kb2 .tr{position:absolute;right:13px;top:15px;font-family:var(--mono);font-size:11.5px;
+         font-weight:700;padding:2px 7px;border-radius:5px}
+.tr-up{background:rgba(255,149,80,.15);color:var(--orange)}
+.tr-dn{background:rgba(46,233,138,.14);color:var(--green)}
+.tr-eq{background:rgba(110,128,168,.15);color:var(--faint)}
+/* thanh tiến trình mảnh dưới đáy ô */
+.kb2 .pg{position:absolute;left:0;right:0;bottom:0;height:3px;background:#0a1020}
+.kb2 .pg i{display:block;height:100%;background:var(--cc);opacity:.8}
+
+/* ═══ KHỐI GẬP — mục ⓪①② mặc định ẩn ═══ */
+.fold{margin-bottom:14px}
+.foldbar{display:flex;align-items:center;gap:11px;background:var(--panel);
+         border:1px solid var(--border);border-radius:10px;padding:11px 16px;
+         cursor:pointer;user-select:none;transition:border-color .15s,background .15s}
+.foldbar:hover{border-color:var(--border-hi);background:var(--panel2)}
+.fold.open>.foldbar{border-radius:10px 10px 0 0;border-bottom-color:transparent;
+                    background:var(--panel2)}
+.foldbar .cv{color:var(--faint);font-size:11px;transition:transform .18s;flex:none}
+.fold.open>.foldbar .cv{transform:rotate(90deg);color:var(--accent)}
+.foldbar h2{flex:none}
+.foldbar .fs{color:var(--faint);font-size:11px;margin-left:auto;text-align:right;
+             line-height:1.45}
+.foldbody{display:none;border:1px solid var(--border);border-top:0;
+          border-radius:0 0 10px 10px;background:var(--panel);padding:2px 16px 14px}
+.fold.open>.foldbody{display:block}
+.foldbody>.card{border:0;background:none;padding:12px 0;margin:0}
+.foldbody>.card+.card{border-top:1px solid var(--border)}
+
+/* ═══ MỤC ③ — biểu đồ trái, bảng phải ═══ */
+.daygrid{display:grid;grid-template-columns:minmax(360px,1fr) minmax(440px,1.05fr);
+         gap:22px;align-items:start}
+@media(max-width:1250px){.daygrid{grid-template-columns:1fr}}
+
+/* --- ô nhập số ngày (gõ tay hoặc bấm − +) --- */
+.ndbox{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:6px;
+       background:rgba(46,232,255,.07);border:1px solid var(--border-hi)}
+.ndlab{color:var(--dim);font-size:11px;white-space:nowrap}
+.ndbox input[type=number]{width:42px;padding:2px 3px;text-align:center;font-size:13px;
+       font-weight:700;color:var(--accent);background:var(--panel2);
+       border:1px solid var(--border-hi);border-radius:4px;-moz-appearance:textfield}
+.ndbox input[type=number]::-webkit-outer-spin-button,
+.ndbox input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.ndstep{padding:0;width:20px;height:20px;line-height:1;font-size:14px;font-weight:700;
+        border-radius:4px;border-color:var(--border-hi);color:var(--accent);
+        background:rgba(46,232,255,.1)}
+.ndstep:hover{background:rgba(46,232,255,.25);border-color:var(--accent);color:#fff}
+
+/* --- ô lọc --- */
+.filt{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+input[type=text]{background:var(--panel2);border:1px solid var(--border);color:var(--text);
+     border-radius:6px;padding:5px 9px;font-size:11.5px;font-family:var(--sans);min-width:190px}
+input[type=text]:focus{outline:none;border-color:var(--accent)}
+th.srt{cursor:pointer;user-select:none}
+th.srt:hover{color:var(--accent)}
+th.srt.on{color:var(--accent)}
+th.srt.on:after{content:' ▾'}
+th.srt.on.asc:after{content:' ▴'}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div>
+    <h1>F2DR VẬN HÀNH — Theo dõi alert <span style="color:var(--accent)">định kỳ hằng tuần</span></h1>
+    <div class="sub" id="hdrSub"></div>
+  </div>
+  <div class="btn-row">
+    <span class="badge" id="hdrBadge"><i class="live"></i><span id="hdrClock"></span></span>
+  </div>
+</div>
+
+<!-- ══════════ KPI LỚN ══════════ -->
+<div class="kpibig" id="kpis"></div>
+
+<!-- ══════════ ⓪①② — MẶC ĐỊNH ẨN, BẤM ĐỂ MỞ ══════════ -->
+<div class="fold" id="foldScore">
+  <div class="foldbar" onclick="toggleFold()">
+    <span class="cv">▶</span>
+    <h2>CÔNG CỤ ĐIỂM &amp; NGƯỠNG IMPACT</h2>
+    <span class="card-sub" style="margin:0">⓪ Công thức · ① Ngưỡng · ② Phân bố score</span>
+    <span class="fs" id="foldSum"></span>
+  </div>
+  <div class="foldbody">
+
+<div class="card newmode" id="fxCard">
+  <div class="card-head">
+    <div><h2>⓪ CÔNG THỨC TÍNH SCORE <i class="ic" data-i="fx">i</i></h2>
+      <span class="card-sub">Kéo r, k — toàn bộ dashboard tính lại tức thì</span></div>
+    <div class="btn-row"><button onclick="resetFx()" id="bResetFx">↺ Về mặc định</button></div>
+  </div>
+  <div class="fx-grid">
+    <div id="fxParams">
+      <div class="thr-row">
+        <span class="thr-lab">Tầng 1 · <b>r</b></span>
+        <input type="range" id="pR" min="0" max="100" value="70" oninput="onFxParam()">
+        <span class="thr-val" id="vR">0.70</span>
+      </div>
+      <div class="thr-row">
+        <span class="thr-lab">Tầng 2 · <b>k</b></span>
+        <input type="range" id="pK" min="0" max="100" value="70" oninput="onFxParam()">
+        <span class="thr-val" id="vK">0.70</span>
+      </div>
+      <div class="sub" id="fxParamHint"></div>
+    </div>
+    <div>
+      <div class="formula" id="fxFormula"></div>
+      <div class="note" id="fxNote"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ ① NGƯỠNG IMPACT ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>① NGƯỠNG IMPACT <i class="ic" data-i="thr">i</i></h2>
+      <span class="card-sub">Kéo thanh — số liệu bên dưới nhảy theo tức thì</span></div>
+    <div class="btn-row">
+      <span class="sub">Cắt nhanh theo %:</span>
+      <button onclick="preset(25,40,30,5)">25/40/30/5</button>
+      <button onclick="preset(50,30,15,5)">50/30/15/5</button>
+      <button onclick="preset(70,20,8,2)">70/20/8/2</button>
+      <button onclick="autoGap()" title="Đặt vạch vào giữa các khe trống của phân phối">⚡ Khe trống</button>
+      <button onclick="resetThr()">↺ Về 25/40/30/5</button>
+    </div>
+  </div>
+  <div class="ctl-grid">
+    <div>
+      <div class="thr-row">
+        <span class="thr-lab"><i class="dot" style="background:var(--low)"></i>Low→Med</span>
+        <input type="range" id="tLM" min="1" max="99" value="25" oninput="onThr('tLM')">
+        <span class="thr-val" id="vLM">25</span>
+      </div>
+      <div class="thr-row">
+        <span class="thr-lab"><i class="dot" style="background:var(--med)"></i>Med→High</span>
+        <input type="range" id="tMH" min="1" max="99" value="55" oninput="onThr('tMH')">
+        <span class="thr-val" id="vMH">55</span>
+      </div>
+      <div class="thr-row">
+        <span class="thr-lab"><i class="dot" style="background:var(--high)"></i>High→VH</span>
+        <input type="range" id="tHV" min="1" max="99" value="80" oninput="onThr('tHV')">
+        <span class="thr-val" id="vHV">80</span>
+      </div>
+    </div>
+    <div>
+      <h3>PHẠM VI TÍNH</h3>
+      <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center" class="btn-row">
+        <button id="mAll" class="on" onclick="setMode('all')">Gộp <span id="mAllN"></span> ngày</button>
+        <button id="mDay" onclick="setMode('day')">Một ngày</button>
+      </div>
+      <div id="dayPick" style="display:none;margin-bottom:8px">
+        <select id="selDay" onchange="render()" style="width:100%"></select>
+      </div>
+      <div class="note" id="modeNote"></div>
+    </div>
+    <div>
+      <h3>MỤC TIÊU % <span style="font-weight:400;color:var(--faint)">— cắt theo thứ tự VH → High → Low</span></h3>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+        <div><div class="sub" style="color:var(--low)">Low</div><input type="number" id="gLow" value="25" min="0" max="100"></div>
+        <div><div class="sub" style="color:var(--med)">Med</div><input type="number" id="gMed" value="40" min="0" max="100"></div>
+        <div><div class="sub" style="color:var(--high)">High</div><input type="number" id="gHigh" value="30" min="0" max="100"></div>
+        <div><div class="sub" style="color:var(--vh)">VH</div><input type="number" id="gVH" value="5" min="0" max="100"></div>
+      </div>
+      <div style="margin-top:8px" class="btn-row">
+        <button onclick="cutByTarget()">→ Cắt theo mục tiêu</button>
+        <span class="sub" id="sumTgt"></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ ② PHÂN BỐ SCORE ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>② PHÂN BỐ SCORE (mỗi KH tính riêng từng ngày) <i class="ic" data-i="dist">i</i></h2>
+      <span class="card-sub" id="distSub"></span></div>
+    <div class="btn-row">
+      <span class="sub">Độ rộng bin</span>
+      <select id="binW" onchange="render()">
+        <option value="1" selected>1 điểm</option><option value="2">2 điểm</option>
+        <option value="5">5 điểm</option><option value="10">10 điểm</option>
+      </select>
+      <span class="sub">Trục Y</span>
+      <select id="yScale" onchange="render()">
+        <option value="lin" selected>Tuyến tính</option><option value="log">Log</option>
+      </select>
+    </div>
+  </div>
+  <div class="hist-wrap">
+    <div class="hist-yaxis" id="histY"></div>
+    <div class="hist-body">
+      <div class="hist-stack"><div id="hgrid"></div><div class="hist" id="hist"></div></div>
+      <div class="hticks" id="hticks"></div>
+    </div>
+  </div>
+  <div class="stackwrap" style="margin-top:14px"><div id="stackTips"></div><div class="stackbar" id="stackBar"></div></div>
+  <div class="stacklegend" id="stackLeg"></div>
+  <div class="note" id="gapNote"></div>
+</div>
+
+  </div><!-- /foldbody -->
+</div><!-- /fold -->
+
+<!-- ══════════ ③ ALERT THEO NGÀY ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>③ ALERT THEO NGÀY <i class="ic" data-i="day">i</i></h2>
+      <span class="card-sub" id="daySub"></span></div>
+    <div class="filt">
+      <span class="sub">Hiện</span>
+      <select id="dayNd" onchange="render()"></select>
+    </div>
+  </div>
+  <div class="daygrid">
+    <div>
+      <div style="position:relative"><div class="daychart" id="dayChart"></div></div>
+      <div class="dayx" id="dayX"></div>
+    </div>
+    <div><table class="fix" id="dayTbl"></table></div>
+  </div>
+</div>
+
+<!-- ══════════ ④ NHÓM NGHIỆP VỤ ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>④ THEO NHÓM NGHIỆP VỤ <i class="ic" data-i="nhom">i</i></h2>
+      <span class="card-sub" id="nhomSub"></span></div>
+    <div class="filt">
+      <span class="sub">Ngày</span>
+      <select id="nhomNgay" onchange="renderNhom()"></select>
+    </div>
+  </div>
+  <table class="fix" id="nhomTbl"></table>
+</div>
+
+<!-- ══════════ ⑤ MA TRẬN KỊCH BẢN × NGÀY ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>⑤ KỊCH BẢN NÀO GÂY RA? — MA TRẬN KỊCH BẢN × NGÀY <i class="ic" data-i="mat">i</i></h2>
+      <span class="card-sub" id="matSub"></span></div>
+    <div class="filt">
+      <input type="text" id="qKB" placeholder="Tìm tên kịch bản…" oninput="renderMat()">
+      <span class="ndbox" title="Số ngày gần nhất muốn xem — gõ số rồi bấm Enter, hoặc dùng nút − +">
+        <span class="ndlab">Hiện</span>
+        <button class="ndstep" onclick="stepNd(-1)">−</button>
+        <input type="number" id="matNd" value="7" min="1" max="30" step="1"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();onNd()}"
+               onblur="onNd()">
+        <span class="ndlab">ngày gần nhất</span>
+        <button class="ndstep" onclick="stepNd(1)">+</button>
+      </span>
+      <span class="sub">Sắp theo</span>
+      <select id="matSort" onchange="renderMat()">
+        <option value="alert">Tổng alert</option>
+        <option value="dinh">Ngày cao nhất</option>
+        <option value="ten">Tên A→Z</option>
+        <option value="nhom">Nhóm nghiệp vụ</option>
+      </select>
+    </div>
+  </div>
+  <div id="matBox"></div>
+  <div class="note" id="matNote"></div>
+</div>
+
+<!-- ══════════ ⑥ KH BỊ BẮN NHIỀU ALERT ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>⑥ AI BỊ BẮN? — KHÁCH HÀNG NHIỀU ALERT NHẤT <i class="ic" data-i="khp">i</i></h2>
+      <span class="card-sub" id="khSub"></span></div>
+    <div class="filt">
+      <input type="text" id="qKH" placeholder="Tìm mã khách hàng…" oninput="renderTopKH()">
+      <span class="sub">Ngày</span>
+      <select id="khNgay" onchange="renderTopKH()"></select>
+      <button id="khAll" class="on" onclick="setKHF('all')">Tất cả</button>
+      <button id="khVH" onclick="setKHF('vh')">Chỉ Very High</button>
+    </div>
+  </div>
+  <div class="scroll"><table class="fix" id="khTbl"></table></div>
+  <div class="note" id="khNote"></div>
+</div>
+
+<!-- ══════════ ⑦ GHI CHÉP ĐIỀU TRA ══════════ -->
+<div class="card">
+  <div class="card-head">
+    <div><h2>⑦ KẾT LUẬN ĐIỀU TRA &amp; TỐI ƯU RULE <i class="ic" data-i="note">i</i></h2>
+      <span class="card-sub">Ghi lại kết quả điều tra từng kỳ: điều tra bao nhiêu khách,
+        rút ra gì, sửa rule nào</span></div>
+  </div>
+  <div id="ghichep"></div>
+</div>
+
+<!-- ══════════ ⑧ LƯU Ý ══════════ -->
+<div class="card">
+  <div class="card-head"><div><h2>⑧ LƯU Ý VỀ DỮ LIỆU <i class="ic" data-i="warn">i</i></h2>
+    <span class="card-sub">Đọc trước khi kết luận</span></div></div>
+  <div id="warnBox"></div>
+</div>
+
+<div id="tip"></div>
+<script>
+const D = __DATA__;
+const BAND = [
+  {k:'low', n:'Low',       c:'#2ee98a', act:'Không làm gì'},
+  {k:'med', n:'Medium',    c:'#ffd84f', act:'Cảnh báo VÀNG khi có người chuyển tiền tới'},
+  {k:'high',n:'High',      c:'#ff4d6b', act:'Cảnh báo ĐỎ khi có người chuyển tiền tới'},
+  {k:'vh',  n:'Very High', c:'#b98cff', act:'PENDING giao dịch'},
+];
+let MODE='all', KHF='all', CUR=null, KHOPEN={};
+
+const $   = id => document.getElementById(id);
+const fmt = n => n.toLocaleString('vi');
+const pc  = (a,b) => b ? (a/b*100) : 0;
+const thr = () => [+$('tLM').value, +$('tMH').value, +$('tHV').value];
+const esc = s => String(s).replace(/[&<>"]/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dLab = s => s.slice(8,10)+'/'+s.slice(5,7);
+
+/* ═══════════ CÔNG THỨC PP-D 2 TẦNG ═══════════ */
+function eff(base, cap, n, r){
+  if(cap <= base) return base;
+  return cap - (cap - base) * Math.pow(r, n - 1);
+}
+function scoreKH(row, r, k){
+  const es = [];
+  for(let i = 0; i < row.length; i += 2){
+    const kb = D.kb[row[i]];
+    es.push(eff(kb.sc, kb.cap, row[i+1], r));
+  }
+  if(!es.length) return 0;
+  const M = Math.max(...es);
+  let prod = 1, usedM = false;
+  for(const e of es){
+    if(!usedM && e === M){ usedM = true; continue; }
+    prod *= (1 - e / 100);
+  }
+  return Math.min(100, Math.max(0, M + (100 - M) * k * (1 - prod)));
+}
+/* dựng histogram toàn kỳ + từng ngày theo r,k đang đặt */
+function buildCur(){
+  const r = +$('pR').value/100, k = +$('pK').value/100;
+  const all  = new Array(101).fill(0);
+  const days = D.days.map(()=>new Array(101).fill(0));
+  const sc   = new Array(D.picks.length);
+  for(let i=0;i<D.picks.length;i++){
+    const s = Math.min(100, Math.max(0, Math.round(scoreKH(D.picks[i], r, k))));
+    sc[i]=s; all[s]++; days[D.luotNg[i]][s]++;
+  }
+  CUR = {all, days, sc};
+}
+function onFxParam(){
+  $('vR').textContent = (+$('pR').value/100).toFixed(2);
+  $('vK').textContent = (+$('pK').value/100).toFixed(2);
+  buildCur(); render();
+}
+function resetFx(){
+  $('pR').value = D.r*100; $('pK').value = D.k*100; onFxParam();
+}
+
+/* ───────── tiện ích histogram ───────── */
+function curHist(){
+  if(MODE === 'day'){
+    const i = D.days.indexOf($('selDay').value);
+    return i >= 0 ? CUR.days[i] : CUR.all;
+  }
+  return CUR.all;
+}
+const total = h => h.reduce((a,b)=>a+b,0);
+function bandCount(h, t){
+  const [t1,t2,t3] = t, c = [0,0,0,0];
+  for(let s=0;s<=100;s++){ if(!h[s]) continue;
+    c[s<t1?0:s<t2?1:s<t3?2:3] += h[s]; }
+  return c;
+}
+function pctlOf(h,p){ const N=total(h); let a=0;
+  for(let s=0;s<=100;s++){ a+=h[s]; if(a>=N*p/100) return s; } return 100; }
+function cdf(h,x){ const N=total(h); let a=0; for(let s=0;s<x;s++) a+=h[s];
+  return N? a/N*100 : 0; }
+
+/* ───────── điều khiển ngưỡng ───────── */
+function onThr(id){
+  let [a,b,c] = thr();
+  if(id==='tLM' && a>b) $('tMH').value = a;
+  if(id==='tMH'){ if(b<a) $('tLM').value=b; if(b>c) $('tHV').value=b; }
+  if(id==='tHV' && c<b) $('tMH').value = c;
+  render();
+}
+function preset(l,m,h,v){
+  $('gLow').value=l; $('gMed').value=m; $('gHigh').value=h; $('gVH').value=v;
+  cutByTarget();
+}
+function cutByTarget(){
+  const g = id => Math.max(0, +$(id).value || 0);
+  let l=g('gLow'), m=g('gMed'), h=g('gHigh'), v=g('gVH');
+  const tot = l+m+h+v; if(tot<=0) return;
+  l=l/tot*100; h=h/tot*100; v=v/tot*100;
+  const H = curHist(), N = total(H); if(!N) return;
+  function bestCut(lo, hi, pctOf, target){
+    let best=lo, bd=Infinity;
+    for(let x=lo;x<=hi;x++){ const d=Math.abs(pctOf(x)-target);
+      if(d < bd-1e-9){ bd=d; best=x; } }
+    return best;
+  }
+  const above = x => { let a=0; for(let s=x;s<=100;s++) a+=H[s]; return a/N*100; };
+  const below = x => cdf(H, x);
+  let t3 = bestCut(3, 99, above, v);
+  let t2 = bestCut(2, t3-1, x => below(t3)-below(x), h);
+  let t1 = bestCut(1, t2-1, below, l);
+  if(t2<=t1) t2=t1+1; if(t3<=t2) t3=t2+1;
+  $('tLM').value=Math.min(99,t1); $('tMH').value=Math.min(99,t2); $('tHV').value=Math.min(99,t3);
+  render();
+}
+function autoGap(){
+  const H = curHist(), gaps=[]; let s=1;
+  while(s<=99){
+    if(H[s]===0){ let e=s; while(e<=99 && H[e]===0) e++;
+      gaps.push({w:e-s, mid:Math.round((s+e-1)/2), below:cdf(H,s)}); s=e; }
+    else s++;
+  }
+  const picked=[];
+  [55,85,96].forEach(w=>{
+    let best=null, bs=1e9;
+    gaps.forEach(g=>{ if(picked.includes(g.mid)) return;
+      const d=Math.abs(g.below-w)-g.w*1.5; if(d<bs){ bs=d; best=g; } });
+    if(best) picked.push(best.mid);
+  });
+  picked.sort((a,b)=>a-b);
+  if(picked.length===3){ $('tLM').value=picked[0]; $('tMH').value=picked[1]; $('tHV').value=picked[2]; }
+  render();
+}
+function resetThr(){ preset(25,40,30,5); }
+function setMode(m){
+  MODE=m;
+  $('mAll').classList.toggle('on', m==='all');
+  $('mDay').classList.toggle('on', m==='day');
+  $('dayPick').style.display = m==='day' ? 'block' : 'none';
+  render();
+}
+/* ô nhập số ngày của ma trận — kẹp trong [1, min(30, số ngày có)].
+   CHỈ chốt giá trị khi bấm Enter hoặc rời ô, KHÔNG chốt theo từng ký tự gõ:
+   nếu ép ngay lúc oninput thì xoá số 7 để gõ 5 sẽ hoá thành 15 rồi bị kẹp lại,
+   không bao giờ nhập được số mình muốn. Ô đang để trống thì giữ nguyên bảng cũ. */
+function ndMax(){ return Math.min(30, D.tong.nd); }
+let ND_CUR = 7;                                  // số ngày đang thực sự hiển thị
+function onNd(){
+  const raw = $('matNd').value.trim();
+  if(raw === ''){ $('matNd').value = ND_CUR; return; }   // xoá trắng rồi bỏ đi → trả lại số cũ
+  let v = Math.round(+raw);
+  if(!isFinite(v) || v < 1) v = 1;
+  if(v > ndMax()) v = ndMax();
+  $('matNd').value = v;
+  ND_CUR = v;
+  renderMat();
+}
+function stepNd(d){ $('matNd').value = (+$('matNd').value || ND_CUR) + d; onNd(); }
+
+/* ───────── histogram ───────── */
+function colorAt(s,t){ return s<t[0]?BAND[0].c : s<t[1]?BAND[1].c : s<t[2]?BAND[2].c : BAND[3].c; }
+function drawHist(H, t){
+  const bw = +$('binW').value, logY = $('yScale').value==='log';
+  const nb = Math.ceil(100/bw), bins=[];
+  for(let i=0;i<nb;i++){
+    const lo=i*bw, hi=Math.min(100,lo+bw);
+    let c=0; for(let s=lo;s<hi;s++) c+=H[s]||0;
+    if(hi>=100) c+=H[100]||0;
+    bins.push({lo,hi,c});
+  }
+  const mx = Math.max(...bins.map(b=>b.c), 1);
+  const sc = v => logY ? (v<=0?0:Math.log10(v+1)/Math.log10(mx+1)*100) : v/mx*100;
+  $('hist').innerHTML = bins.map(b=>{
+    const cuts=[t[0],t[1],t[2]].filter(x=>x>b.lo&&x<b.hi).sort((p,q)=>p-q);
+    let bg;
+    if(!cuts.length) bg = colorAt(b.lo+(b.hi-b.lo)/2, t);
+    else{
+      const mk=[b.lo,...cuts,b.hi], ps=[];
+      for(let i=0;i<mk.length-1;i++){
+        const A=(mk[i]-b.lo)/(b.hi-b.lo)*100, B=(mk[i+1]-b.lo)/(b.hi-b.lo)*100;
+        const col=colorAt((mk[i]+mk[i+1])/2,t);
+        ps.push(col+' '+A.toFixed(1)+'%', col+' '+B.toFixed(1)+'%');
+      }
+      bg='linear-gradient(90deg,'+ps.join(',')+')';
+    }
+    const ttl = `${b.lo}-${b.hi}: ${fmt(b.c)} lượt (${pc(b.c,total(H)).toFixed(2)}%)`;
+    return `<div class="bar" style="height:${sc(b.c)}%;background:${bg}" title="${ttl}"></div>`;
+  }).join('');
+  t.forEach((x,i)=>{
+    const el=document.createElement('div');
+    el.className='vline'; el.style.left=x+'%'; el.style.background=BAND[i+1].c;
+    el.innerHTML=`<span style="color:${BAND[i+1].c}">${x}</span>`;
+    $('hist').appendChild(el);
+  });
+  const ticks=[];
+  if(logY){
+    const L = v => Math.log10(v+1)/Math.log10(mx+1)*100;
+    ticks.push({top:100, v:0});
+    for(let e=0; Math.pow(10,e)<=mx; e++){ const v=Math.pow(10,e); ticks.push({top:100-L(v), v}); }
+    if(ticks[ticks.length-1].v<mx) ticks.push({top:0, v:mx});
+  }else{
+    for(let i=0;i<=4;i++) ticks.push({top:(1-i/4)*100, v:Math.round(mx*i/4)});
+  }
+  const keep = ticks.filter((k,i)=> i===0 || i===ticks.length-1 ||
+                                    Math.abs(k.top-ticks[i-1].top)>7);
+  $('histY').innerHTML = keep.map(k=>`<div class="ytick" style="top:${k.top}%">${fmt(k.v)}</div>`).join('');
+  $('hgrid').innerHTML = keep.filter(k=>k.v>0).map(k=>`<div class="gline" style="top:${k.top}%"></div>`).join('');
+  $('hticks').innerHTML = [0,20,40,60,80,100].map(v=>`<span>${v}</span>`).join('');
+}
+
+/* ───────── render chính ───────── */
+function render(){
+  const t = thr(), H = curHist(), N = total(H);
+  $('vLM').textContent=t[0]; $('vMH').textContent=t[1]; $('vHV').textContent=t[2];
+  const sg=['gLow','gMed','gHigh','gVH'].reduce((a,id)=>a+(+$(id).value||0),0);
+  $('sumTgt').innerHTML = `Σ = <b style="color:${sg===100?'var(--green)':'var(--orange)'}">${sg}%</b>`;
+  const dl = MODE==='day' ? dLab($('selDay').value) : null;
+  $('modeNote').innerHTML = MODE==='all'
+    ? `<b>Gộp ${D.tong.nd} ngày:</b> mỗi khách tính riêng theo từng ngày. Một người bị bắt 3 ngày
+       được đếm 3 lượt, mỗi lượt có Impact của riêng ngày đó. <b>Không gộp qua ngày.</b>`
+    : `<b>Riêng ngày ${dl}:</b> khách hàng bị bắt trong ngày này.`;
+
+  drawHist(H, t);
+  const c = bandCount(H, t);
+  $('distSub').textContent = `${fmt(N)} lượt (KH × ngày) · ${MODE==='all'
+      ? D.tong.d0+' – '+D.tong.d1 : 'ngày '+dl} · vạch màu = ngưỡng`;
+
+  /* thanh cơ cấu 4 màu */
+  $('stackBar').innerHTML = c.map((v,i)=>{
+    const p = pc(v,N);
+    const cls = p<3?'s2':p<7?'s1':'';
+    return `<div class="${cls}" style="width:${p}%;background:${BAND[i].c}"
+      title="${BAND[i].n}: ${fmt(v)} lượt (${p.toFixed(2)}%)">${p>=3?BAND[i].n+' '+p.toFixed(1)+'%':''}</div>`;
+  }).join('');
+  let acc=0;
+  $('stackTips').innerHTML = c.map((v,i)=>{
+    const p=pc(v,N), mid=acc+p/2; acc+=p;
+    return p<3 && p>0 ? `<span class="tiplab" style="left:${mid}%;color:${BAND[i].c}">${p.toFixed(2)}%</span>` : '';
+  }).join('');
+  $('stackLeg').innerHTML = c.map((v,i)=>
+    `<span><i class="dot" style="background:${BAND[i].c}"></i> ${BAND[i].n}
+      <b>${fmt(v)}</b> · ${pc(v,N).toFixed(2)}% — <span class="sub">${BAND[i].act}</span></span>`).join('');
+
+  renderKPI(c, N, t);
+
+  /* khe trống quanh ngưỡng */
+  const gaps=[]; let s=1;
+  while(s<=99){ if(H[s]===0){ let e=s; while(e<=99&&H[e]===0) e++;
+    if(e-s>=2) gaps.push([s,e-1]); s=e; } else s++; }
+  $('gapNote').innerHTML = gaps.length
+    ? `<b>Khe trống trong phân bố:</b> ` + gaps.slice(0,8).map(g=>
+        `<span class="tag">${g[0]}–${g[1]}</span>`).join(' ') +
+      ` — đặt vạch vào giữa khe thì ngưỡng ổn định, xê dịch vài điểm không đổi kết quả.`
+    : 'Phân bố liền mạch, không có khe trống rõ rệt.';
+
+  renderDay(); renderNhom(); renderMat(); renderTopKH(); renderGC();
+  renderFx(); renderWarn(); foldSum();
+}
+
+/* ───────── KPI lớn ───────── */
+function renderKPI(c, N, t){
+  const last = D.ngay[D.ngay.length-1], prev = D.ngay[D.ngay.length-2];
+  const dt  = prev ? last.alert - prev.alert : 0;
+  const pdt = prev && prev.alert ? Math.abs(dt/prev.alert*100) : 0;
+  const trd = !prev ? '' : dt>0
+      ? `<span class="tr tr-up">▲ ${pdt.toFixed(0)}%</span>`
+      : dt<0 ? `<span class="tr tr-dn">▼ ${pdt.toFixed(0)}%</span>`
+             : `<span class="tr tr-eq">=</span>`;
+  const mxNg = Math.max(...D.ngay.map(x=>x.alert));
+  const apk  = D.tong.alert/D.tong.kh;
+  const nhieu = D.taipham.filter(x=>x.n>=3).reduce((a,x)=>a+x.kh,0);
+
+  const O = [
+    {c:'var(--accent)', k:'Tổng alert', v:fmt(D.tong.alert),
+     u:`<b>${D.tong.nd}</b> ngày · trung bình <b>${fmt(Math.round(D.tong.tbNgay))}</b>/ngày`,
+     pg:1},
+    {c:'var(--green)', k:'Khách hàng', v:fmt(D.tong.kh),
+     u:`<b>${fmt(D.tong.luot)}</b> lượt · <b>${apk.toFixed(2)}</b> alert mỗi khách`,
+     pg:1},
+    {c:'var(--yellow)', k:'Kịch bản nổ',
+     v:`${D.tong.kb}<small> / ${D.tong.kbCauHinh}</small>`,
+     u:`<b>${D.tong.kbCauHinh-D.tong.kb}</b> kịch bản đã cấu hình · không alert`,
+     pg:D.tong.kb/D.tong.kbCauHinh},
+    {c:'var(--orange)', k:'Alert ngày cuối', v:fmt(last.alert), tr:trd,
+     u:`${dLab(last.ngay)} · cao nhất kỳ <b>${fmt(mxNg)}</b>`,
+     pg:last.alert/mxNg},
+    {c:'var(--red)', k:'Tái phạm', v:fmt(nhieu),
+     u:`khách dính alert từ <b>3 ngày</b> trở lên`,
+     pg:nhieu/D.tong.kh},
+    {c:'var(--vh)', k:'Very High', v:fmt(c[3]),
+     u:`<b>${pc(c[3],N).toFixed(2)}%</b> số lượt · ngưỡng ≥ <b>${t[2]}</b> điểm`,
+     pg:pc(c[3],N)/100},
+  ];
+  $('kpis').innerHTML = O.map(o=>
+    `<div class="kb2" style="--cc:${o.c}">
+       ${o.tr||''}
+       <div class="k">${o.k}</div>
+       <div class="v">${o.v}</div>
+       <div class="u">${o.u}</div>
+       <div class="pg"><i style="width:${Math.min(100,o.pg*100).toFixed(1)}%"></i></div>
+     </div>`).join('');
+}
+
+/* ───────── gập / mở khối công cụ điểm ───────── */
+function toggleFold(){
+  const f = $('foldScore');
+  f.classList.toggle('open');
+  try{ localStorage.setItem('vh_fold', f.classList.contains('open')?'1':'0'); }catch(e){}
+}
+function foldSum(){
+  const t = thr(), r = (+$('pR').value/100).toFixed(2), k = (+$('pK').value/100).toFixed(2);
+  $('foldSum').innerHTML =
+    `r = <b class="num" style="color:var(--dim)">${r}</b> ·
+     k = <b class="num" style="color:var(--dim)">${k}</b> &nbsp;|&nbsp;
+     ngưỡng <b class="num" style="color:var(--low)">${t[0]}</b> /
+     <b class="num" style="color:var(--med)">${t[1]}</b> /
+     <b class="num" style="color:var(--high)">${t[2]}</b>`;
+}
+
+/* ───────── ⓪ giải thích công thức ───────── */
+function renderFx(){
+  const r=(+$('pR').value/100), k=(+$('pK').value/100);
+  $('fxFormula').innerHTML =
+    `Tầng 1 &nbsp; eᵢ = cap − (cap − base)·<b>${r.toFixed(2)}</b><sup>(n−1)</sup><br>` +
+    `Tầng 2 &nbsp; score = M + (100 − M)·<b>${k.toFixed(2)}</b>·(1 − ∏(1 − eⱼ/100))`;
+  const k0 = D.kb[0];
+  const e2 = eff(k0.sc, k0.cap, 2, r), e3 = eff(k0.sc, k0.cap, 3, r);
+  $('fxParamHint').innerHTML =
+    `<b>r</b> nhỏ → nổ lại lần 2 đã gần chạm trần. <b>k</b> nhỏ → dính thêm KB khác ít cộng điểm.`;
+  $('fxNote').innerHTML =
+    `Điểm tính lại từ <i>Level của KB · điểm gốc Score_KB · số lần KB đó nổ trong ngày</i>.
+     Trần theo Level: Low ${D.cap.Low} · Medium ${D.cap.Medium} · High ${D.cap.High} ·
+     Very High ${D.cap['Very High']}.<br>
+     Ví dụ <b>${esc(k0.ten)}</b> (${k0.lv}, gốc ${k0.sc}): nổ 1 lần = <b>${k0.sc}</b> ·
+     2 lần = <b>${e2.toFixed(1)}</b> · 3 lần = <b>${e3.toFixed(1)}</b> điểm.`;
+}
+
+/* ───────── ③ theo ngày ─────────
+   Chỉ vẽ N NGÀY GẦN NHẤT theo ô chọn. Khe hở, bo góc, cỡ chữ co theo số cột
+   nên 7 cột hay 100 cột đều kín khung và đọc được. */
+const TH = ['CN','T2','T3','T4','T5','T6','T7'];
+const thu = s => TH[new Date(s+'T00:00:00').getDay()];
+const cuoiTuan = s => { const g = new Date(s+'T00:00:00').getDay(); return g===0||g===6; };
+/* lấy N phần tử cuối của mảng */
+const nCuoi = (arr, n) => n>=arr.length ? arr : arr.slice(arr.length-n);
+
+function renderDay(){
+  const nd  = +$('dayNd').value || D.tong.nd;
+  const NG  = nCuoi(D.ngay, nd);
+  const n   = NG.length;
+  const mx  = Math.max(...NG.map(x=>x.alert), 1);
+  const tbN = NG.reduce((a,x)=>a+x.alert,0)/n;          // TB của đúng đoạn đang xem
+  const iMx = NG.reduce((b,x,i)=> x.alert>NG[b].alert?i:b, 0);
+
+  /* co giãn theo số cột */
+  const gap = n<=10 ? 6 : n<=20 ? 4 : n<=40 ? 2.5 : 1.5;
+  const rad = n<=20 ? 3 : 2;
+  const fs  = n<=10 ? 10 : n<=16 ? 9 : n<=24 ? 8 : 0;   // 0 = ẩn nhãn số
+  const fsx = n<=10 ? 9.5 : n<=20 ? 8.5 : n<=34 ? 7.5 : 0;
+  const ch  = $('dayChart');
+  ch.style.cssText = `--gap:${gap}px;--rad:${rad}px;--fs:${fs}px`;
+  $('dayX').style.cssText = `--gap:${gap}px;--fsx:${fsx}px`;
+
+  ch.innerHTML = NG.map((x,i)=>{
+    const h = x.alert/mx*100;
+    return `<div class="col${i===iMx?' pk':''}"
+        title="${x.ngay} (${thu(x.ngay)}): ${fmt(x.alert)} alert · ${fmt(x.kh)} khách · ${x.kb} KB">
+      ${fs?`<div class="vlab" style="bottom:calc(${h}% + 3px)">${fmt(x.alert)}</div>`:''}
+      <div class="bar2" style="height:${h}%"></div></div>`;
+  }).join('') +
+    `<div class="dayavg" style="bottom:${tbN/mx*100}%"><b>TB ${fmt(Math.round(tbN))}</b></div>`;
+
+  /* nhãn ngày: nhiều cột thì thưa bớt cho khỏi chồng chữ */
+  const buoc = fsx===0 ? 0 : n<=16 ? 1 : n<=34 ? 2 : 5;
+  $('dayX').innerHTML = NG.map((x,i)=>{
+    const hien = buoc && (i%buoc===0 || i===n-1);
+    return `<span class="${cuoiTuan(x.ngay)?'we':''}">${hien?dLab(x.ngay):''}</span>`;
+  }).join('');
+
+  $('daySub').innerHTML = (nd < D.tong.nd
+      ? `<b>${n}</b> ngày gần nhất (tổng kỳ có ${D.tong.nd} ngày)`
+      : `Toàn kỳ <b>${n}</b> ngày`) +
+    ` · đường gạch cam = trung bình <b>${fmt(Math.round(tbN))}</b> alert/ngày ·
+      cột cam = ngày cao nhất`;
+
+  /* bảng bên phải — cũng chỉ liệt kê đoạn đang xem, mới nhất lên đầu */
+  $('dayTbl').innerHTML =
+    `<thead><tr><th class="l" style="width:112px">Ngày</th>
+      <th class="w-num">Alert</th><th class="w-num-s">So TB</th>
+      <th class="w-num">Khách</th><th class="w-num">KH mới</th>
+      <th class="w-num-s">KB nổ</th><th class="w-num-s">Alert/KH</th></tr></thead><tbody>` +
+    NG.slice().reverse().map(x=>{
+      const rt = tbN ? x.alert/tbN : 0;
+      const col = rt>=1.3?'var(--orange)': rt<=0.75?'var(--faint)':'var(--dim)';
+      return `<tr><td class="l num">${dLab(x.ngay)}
+          <span class="off" style="font-size:10px"> ${thu(x.ngay)}</span></td>
+        <td class="num"><b>${fmt(x.alert)}</b></td>
+        <td class="num" style="color:${col}">${rt.toFixed(2)}×</td>
+        <td class="num">${fmt(x.kh)}</td>
+        <td class="num">${fmt(x.khMoi)}</td>
+        <td class="num">${x.kb}</td>
+        <td class="num">${(x.alert/x.kh).toFixed(2)}</td></tr>`;
+    }).join('') +
+    `<tr style="border-top:2px solid var(--border-hi)">
+       <td class="l"><b style="color:var(--faint)">TB / TỔNG</b></td>
+       <td class="num"><b>${fmt(Math.round(tbN))}</b></td>
+       <td class="num off">1.00×</td>
+       <td class="num">${fmt(Math.round(NG.reduce((a,x)=>a+x.kh,0)/n))}</td>
+       <td class="num"><b>${fmt(D.tong.kh)}</b></td>
+       <td class="num">${D.tong.kb}</td>
+       <td class="num">${(D.tong.alert/D.tong.kh).toFixed(2)}</td></tr></tbody>`;
+}
+
+/* ───────── ④ nhóm nghiệp vụ (bảng) ─────────
+   Lọc được theo NGÀY. Chọn một ngày thì alert / khách / số KB nổ đều lấy đúng
+   trong ngày đó (build script xuất sẵn ở x.ng), còn cột "đã cấu hình" giữ nguyên
+   vì đó là cấu hình hệ thống, không phụ thuộc ngày. */
+function renderNhom(){
+  const dv = $('nhomNgay').value;                      // '' = toàn kỳ
+  const j  = dv==='' ? -1 : D.days.indexOf(dv);
+
+  /* số liệu của đúng phạm vi đang xem */
+  const R = D.nhom.map(x=>{
+    if(j < 0) return {ten:x.ten, alert:x.alert, kh:x.kh, kb:x.kb, kbTong:x.kbTong};
+    const g = (x.ng||{})[j];                           // [alert, KH, KB nổ]
+    return {ten:x.ten, alert:g?g[0]:0, kh:g?g[1]:0, kb:g?g[2]:0, kbTong:x.kbTong};
+  }).sort((a,b)=> b.alert-a.alert);
+
+  /* tổng của phạm vi: toàn kỳ lấy D.tong, một ngày lấy dòng tương ứng ở D.ngay.
+     KH không cộng ngang các nhóm được (một khách dính nhiều nhóm chỉ là một người). */
+  const T = j < 0
+    ? {alert:D.tong.alert, kh:D.tong.kh, kb:D.tong.kb}
+    : {alert:D.ngay[j].alert, kh:D.ngay[j].kh, kb:D.ngay[j].kb};
+
+  const mx = Math.max(...R.map(x=>x.alert), 1);
+  $('nhomSub').innerHTML =
+    `${R.length} nhóm · ` +
+    (j < 0 ? `toàn kỳ <b>${D.tong.nd}</b> ngày` : `ngày <b>${dLab(dv)} ${thu(dv)}</b>`) +
+    ` · cột "Kịch bản" = số KB có alert / số KB đã cấu hình lên F2DR của chính nhóm đó`;
+  const dots = (a,b) => `<span class="kbdots">` +
+    Array.from({length:b}, (_,i)=>`<i class="${i<a?'on':''}"></i>`).join('') + `</span>`;
+  $('nhomTbl').innerHTML =
+    `<thead><tr><th class="l w-ten">Nhóm nghiệp vụ</th><th class="w-num">Alert</th>
+      <th class="w-num-s">% tổng</th><th class="w-num">Khách hàng</th>
+      <th class="w-num-s">Alert/KH</th><th class="w-num-s">Kịch bản</th>
+      <th class="l" style="width:130px">Đã cấu hình</th>
+      <th class="l" style="width:26%">Tỉ trọng alert</th></tr></thead><tbody>` +
+    R.map(x=>
+      `<tr class="${x.alert?'':'nh0'}">
+        <td class="l"><b>${esc(x.ten)}</b></td>
+        <td class="num"><b>${fmt(x.alert)}</b></td>
+        <td class="num">${pc(x.alert, T.alert).toFixed(1)}%</td>
+        <td class="num">${fmt(x.kh)}</td>
+        <td class="num">${x.kh?(x.alert/x.kh).toFixed(2):'—'}</td>
+        <td class="num"${x.kb<x.kbTong?' style="color:var(--orange)"':''}>${x.kb}/${x.kbTong}</td>
+        <td>${dots(x.kb, x.kbTong)}</td>
+        <td><span class="nhbar"><i style="width:${x.alert/mx*100}%"></i></span></td>
+      </tr>`).join('') +
+    `<tr style="border-top:2px solid var(--border-hi)">
+       <td class="l"><b style="color:var(--faint)">TỔNG</b></td>
+       <td class="num"><b>${fmt(T.alert)}</b></td>
+       <td class="num">100%</td>
+       <td class="num">${fmt(T.kh)}</td>
+       <td class="num">${T.kh?(T.alert/T.kh).toFixed(2):'—'}</td>
+       <td class="num">${T.kb}/${D.tong.kbCauHinh}</td>
+       <td colspan="2" class="sub">khách hàng đếm theo mã riêng biệt, không cộng ngang được</td>
+     </tr></tbody>`;
+}
+
+/* ───────── ⑤ MA TRẬN kịch bản × ngày ─────────
+   Đây là bước điều tra: thấy ngày lạ ở mục ③ → dóng xuống cột ngày đó,
+   ô nào sáng bất thường so với các ô cùng dòng thì đó là kịch bản gây ra. */
+function renderMat(){
+  const nd = Math.min(Math.max(1, ND_CUR), ndMax());
+  const NGi = [];                                   // chỉ số ngày đang hiện
+  for(let i=Math.max(0,D.tong.nd-nd); i<D.tong.nd; i++) NGi.push(i);
+  const n = NGi.length;
+  const q = ($('qKB').value||'').toLowerCase();
+  const s = $('matSort').value;
+
+  /* alert trong ĐÚNG đoạn ngày đang xem, không lấy tổng cả kỳ */
+  let rows = D.kb.filter(k => !q || k.ten.toLowerCase().includes(q))
+    .map(k=>{
+      const v = NGi.map(i=>k.v[i]);
+      return {...k, vv:v, tong:v.reduce((a,b)=>a+b,0), dinh2:Math.max(...v)};
+    });
+
+  /* Sắp theo nhóm: các kịch bản cùng nghiệp vụ đứng liền nhau. Thứ tự nhóm lấy
+     theo D.nhom (đã sắp giảm dần theo alert toàn kỳ) để nhóm nặng nhất lên trước,
+     trong mỗi nhóm vẫn xếp theo alert của đúng đoạn ngày đang xem. */
+  const thuTuNhom = {};
+  D.nhom.forEach((x,i)=>{ thuTuNhom[x.ten] = i; });
+  const hangNhom = k => thuTuNhom[k.nhom] !== undefined ? thuTuNhom[k.nhom] : 999;
+
+  rows.sort((a,b)=>
+      s==='ten'  ? a.ten.localeCompare(b.ten,'vi')
+    : s==='dinh' ? b.dinh2-a.dinh2
+    : s==='nhom' ? (hangNhom(a)-hangNhom(b))
+                   || (a.nhom||'').localeCompare(b.nhom||'','vi')
+                   || (b.tong-a.tong)
+    : b.tong-a.tong);
+
+  /* thang màu theo GIÁ TRỊ LỚN NHẤT của cả bảng, căn bậc hai cho ô nhỏ vẫn thấy */
+  const mx = Math.max(...rows.map(k=>k.dinh2), 1);
+  /* tổng theo cột + cột nào là ngày cao nhất */
+  const cot = NGi.map((_,j)=> rows.reduce((a,k)=>a+k.vv[j],0));
+  const jMx = cot.indexOf(Math.max(...cot));
+  const dw  = `calc((100% - 320px - ${(n+1)*2}px) / ${n})`;
+
+  const o = (v) => v ? (0.13 + 0.87*Math.sqrt(v/mx)) : 0;
+  const cell = (v, la) => v
+    ? `<td class="c${la?' max':''}" style="background:rgba(46,232,255,${o(v).toFixed(2)});
+         color:${o(v)>0.5?'#04121e':'var(--dim)'}">${v}</td>`
+    : `<td class="c" style="background:#0a1020;color:#2a3f6b">·</td>`;
+
+  $('matBox').innerHTML = `<table class="heat">
+    <colgroup><col style="width:320px">${NGi.map(()=>
+      `<col class="dcol" style="width:${dw}">`).join('')}<col style="width:64px"></colgroup>
+    <thead><tr><th class="l" style="background:none;position:static">Kịch bản</th>
+      ${NGi.map((i,j)=>`<th class="d${cuoiTuan(D.days[i])?' we':''}${j===jMx?' hot':''}"
+         title="${D.days[i]} (${thu(D.days[i])})">${dLab(D.days[i])}</th>`).join('')}
+      <th class="d" style="color:var(--dim)">Σ</th></tr></thead><tbody>` +
+    (()=>{ let nhomTruoc = null;
+      return rows.map(k=>{
+        /* sắp theo nhóm thì mỗi lần đổi nhóm chèn một dòng ngăn, kèm tổng alert
+           của nhóm trong đúng đoạn ngày đang xem — để đọc được ngay nhóm nào nặng */
+        let dau = '';
+        if(s==='nhom' && k.nhom !== nhomTruoc){
+          nhomTruoc = k.nhom;
+          const cua = rows.filter(x=>x.nhom===k.nhom);
+          const tongNhom = cua.reduce((a,x)=>a+x.tong,0);
+          dau = `<tr class="grp"><td class="l">${esc(k.nhom||'(chưa phân nhóm)')}
+              <span class="gn">${cua.length} kịch bản</span></td>
+            <td colspan="${n}"></td><td class="c">${fmt(tongNhom)}</td></tr>`;
+        }
+        return dau + `<tr><td class="nm" title="${esc(k.ten)} — ${k.lv}, ${k.sc} điểm${
+              k.nhom?' · '+esc(k.nhom):''}">
+            <div><span class="nm2">${esc(k.ten)}</span></div></td>` +
+          k.vv.map((v,j)=>cell(v, v===k.dinh2 && v>=20 && k.dinh2 >= k.tong/n*2)).join('') +
+          `<td class="c" style="background:none;color:var(--text);font-weight:700">
+             ${fmt(k.tong)}</td></tr>`;
+      }).join('');
+    })() +
+    `</tbody><tfoot><tr><td class="l">TỔNG THEO NGÀY</td>` +
+      cot.map((v,j)=>`<td${j===jMx?' style="color:var(--orange)"':''}>${fmt(v)}</td>`).join('') +
+      `<td>${fmt(cot.reduce((a,b)=>a+b,0))}</td></tr></tfoot></table>`;
+
+  $('matSub').innerHTML =
+    `<b>${rows.length}</b>/${D.kb.length} kịch bản × <b>${n}</b> ngày gần nhất
+     (${dLab(D.days[NGi[0]])} – ${dLab(D.days[NGi[n-1]])}) ·
+     ô càng sáng càng nhiều alert · viền cam = ngày đỉnh của chính kịch bản đó`;
+  $('matNote').innerHTML =
+    `<b>Cách đọc:</b> thấy ngày nào lạ ở mục ③ thì dóng xuống cột ngày đó ở đây.
+     Cột sáng đều từ trên xuống = cả hệ cùng tăng (thường do data về dồn).
+     Chỉ một vài ô sáng hẳn = đúng kịch bản đó bùng — đọc tên ở đầu dòng.
+     Rê chuột lên tên để xem mức và điểm gốc của kịch bản.`;
+}
+
+/* ───────── ⑥ KH bị bắn nhiều alert ─────────
+   Lọc được theo NGÀY. Chọn 1 ngày thì mọi con số (alert, KB, score) đều
+   tính lại trong đúng ngày đó — vì điểm chấm theo từng ngày, không cộng dồn. */
+function toggleKH(i){ KHOPEN[i] = !KHOPEN[i]; renderTopKH(); }
+function setKHF(f){
+  KHF = f;
+  $('khAll').classList.toggle('on', f==='all');
+  $('khVH').classList.toggle('on', f==='vh');
+  renderTopKH();
+}
+/* điểm của một khách trong MỘT ngày, theo r,k đang kéo */
+function diemNgay(picks, r, k){
+  const row = [];
+  picks.forEach(p=>{ row.push(p[0], p[1]); });
+  return scoreKH(row, r, k);
+}
+function renderTopKH(){
+  const q  = ($('qKH').value||'').toLowerCase();
+  const dv = $('khNgay').value;                        // '' = mọi ngày
+  const r  = +$('pR').value/100, k = +$('pK').value/100;
+  const t  = thr();
+  /* Xếp mức theo ĐÚNG con số hiển thị (làm tròn 1 chữ số), nếu không sẽ có cảnh
+     hai dòng cùng hiện 80.0 mà một dòng High một dòng Very High — do 79.96 vs 80.02. */
+  const mucCua = s0 => { const s = Math.round(s0*10)/10;
+    return s<t[0]?0 : s<t[1]?1 : s<t[2]?2 : 3; };
+
+  /* dựng lại số liệu theo bộ lọc ngày */
+  let rows = D.topkh.map((x,idx)=>{
+    const js = dv==='' ? Object.keys(x.ng).map(Number) : [D.days.indexOf(dv)];
+    let alert = 0; const gom = {}; const ngayCo = [];
+    let dMax = 0, dNgay = null;
+    js.forEach(j=>{
+      const p = x.ng[j]; if(!p) return;
+      ngayCo.push(j);
+      p.forEach(([ki,c])=>{ alert += c; gom[ki] = (gom[ki]||0) + c; });
+      const s = diemNgay(p, r, k);
+      if(s > dMax){ dMax = s; dNgay = j; }
+    });
+    return {idx, kh:x.kh, flag:x.flag, alert, nkb:Object.keys(gom).length,
+            nngay:ngayCo.length, gom, ngayCo, sc:dMax, scNg:dNgay};
+  }).filter(x => x.alert>0 && (!q || x.kh.toLowerCase().includes(q))
+                 && (KHF==='all' || mucCua(x.sc)===3));
+  rows.sort((a,b)=> b.alert-a.alert);
+
+  const nVH = rows.filter(x=>mucCua(x.sc)===3).length;
+  $('khSub').innerHTML =
+    `Top ${D.topkh.length} khách nhiều alert nhất · đang hiện <b>${rows.length}</b>` +
+    (dv ? ` trong ngày <b>${dLab(dv)}</b>` : ` toàn kỳ`) +
+    ` · <b>${nVH}</b> khách chạm Very High · ngưỡng phồng ≥ ${D.cauhinh.nguongKh} alert`;
+
+  const PILL = ['p-low','p-med','p-high','p-vh'];
+  $('khTbl').innerHTML =
+    `<thead><tr><th class="l w-ten">Mã khách hàng</th>
+      <th class="w-num">Alert</th><th class="w-num-s">Số KB</th>
+      <th class="w-num-s">Số ngày</th><th class="w-num-s">Alert/ngày</th>
+      <th class="w-num-s">Score</th><th class="l w-pill">Mức</th>
+      <th class="l" style="width:150px">Ngày điểm cao nhất</th></tr></thead><tbody>` +
+    rows.map(x=>{
+      const op = KHOPEN[x.idx], m = mucCua(x.sc);
+      const mk = x.flag?'<span class="mk mk-kh">phồng</span>':'';
+      let h = `<tr class="kh-row${op?' op':''}" onclick="toggleKH(${x.idx})">
+        <td class="l num ten" title="${esc(x.kh)}">
+          <div class="tw"><span class="nm">${esc(x.kh)}</span>${mk}</div></td>
+        <td class="num"><b>${fmt(x.alert)}</b></td>
+        <td class="num">${x.nkb}</td>
+        <td class="num">${x.nngay}</td>
+        <td class="num">${(x.alert/x.nngay).toFixed(1)}</td>
+        <td class="num" style="color:${BAND[m].c};font-weight:700">${x.sc.toFixed(1)}</td>
+        <td class="l"><span class="pill ${PILL[m]}">${BAND[m].n}</span></td>
+        <td class="l num" style="color:var(--dim)">${x.scNg!=null
+            ? dLab(D.days[x.scNg])+' <span class="off" style="font-size:10px">'
+              +thu(D.days[x.scNg])+'</span>' : '—'}</td></tr>`;
+      if(op){
+        /* mở ra: từng NGÀY một, mỗi ngày liệt kê KB + số lần + điểm ngày đó */
+        const js = (dv==='' ? x.ngayCo : [D.days.indexOf(dv)]).sort((a,b)=>a-b);
+        h += `<tr class="det"><td colspan="8">` + js.map(j=>{
+          const p = D.topkh[x.idx].ng[j]; if(!p) return '';
+          const s = diemNgay(p, r, k), mm = mucCua(s);
+          const na = p.reduce((a,c)=>a+c[1],0);
+          return `<div style="margin-bottom:7px">
+            <span class="gc-tag" style="color:${BAND[mm].c};border-color:${BAND[mm].c}44">
+              ${dLab(D.days[j])} ${thu(D.days[j])}</span>
+            <span class="sub">${fmt(na)} alert · điểm
+              <b style="color:${BAND[mm].c};font-family:var(--mono)">${s.toFixed(1)}</b>
+              (${BAND[mm].n})</span>
+            <div class="detkb" style="margin-top:5px">` +
+            p.map(([ki,c])=>`<span title="${esc(D.kb[ki].lv)}, gốc ${D.kb[ki].sc} điểm">
+                ${esc(D.kb[ki].ten)}<b>${c}</b></span>`).join('') +
+            `</div></div>`;
+        }).join('') + `</td></tr>`;
+      }
+      return h;
+    }).join('') + `</tbody>`;
+
+  $('khNote').innerHTML =
+    `Bấm một dòng để mở chi tiết: <b>từng ngày</b> khách đó dính kịch bản nào, mấy lần,
+     điểm ngày đó bao nhiêu. Cột <b>Score</b> là điểm của ngày cao nhất — điểm chấm theo
+     từng ngày nên không cộng dồn qua ngày.<br>
+     Alert nhiều mà chỉ dính <b>1–2 kịch bản</b> thì thường do chống lặp của kịch bản đó,
+     không phải người này nguy hiểm hơn. Dính <b>nhiều kịch bản khác nhau</b> mới đáng điều tra.`;
+}
+
+/* ───────── ⑦ ghi chép điều tra ─────────
+   Nội dung do người dùng gửi sang, build script nhúng vào D.ghichep.
+   Chưa có gì thì hiện khung trống kèm hướng dẫn. */
+function renderGC(){
+  const G = D.ghichep || [];
+  if(!G.length){
+    $('ghichep').innerHTML =
+      `<div class="gc-empty">
+         <b>Chưa có ghi chép nào cho kỳ này</b>
+         Mục này để lưu lại kết quả xử lý alert định kỳ: đã điều tra bao nhiêu khách,
+         phát hiện ra gì, kịch bản nào cần chỉnh ngưỡng hay sửa chống lặp,
+         việc nào đã làm và việc nào còn treo.<br><br>
+         Soạn nội dung rồi gửi sang, chạy lại <code>build_van_hanh.py</code> là nội dung
+         nằm sẵn trong file — không cần sửa tay HTML.
+       </div>`;
+    return;
+  }
+  $('ghichep').innerHTML = G.map(g=>
+    `<div class="gc-item">
+       <div class="gc-d">${esc(g.ngay||'')}</div>
+       <div class="gc-t">${esc(g.tieude||'')}</div>
+       <div class="gc-b">${g.noidung||''}</div>
+       ${(g.tag||[]).map(t=>`<span class="gc-tag">${esc(t)}</span>`).join('')}
+     </div>`).join('');
+}
+
+/* ───────── ⑨ lưu ý ───────── */
+function renderWarn(){
+  const nhieu = D.taipham.filter(x=>x.n>=3).reduce((a,x)=>a+x.kh,0);
+  const W = [
+    ['Đơn vị đếm', `<b>Alert</b> là số bản ghi cảnh báo. <b>Lượt</b> là một khách trong một ngày —
+      cả kỳ có ${fmt(D.tong.luot)} lượt từ ${fmt(D.tong.kh)} khách. Điểm chấm theo <b>lượt</b>,
+      không cộng dồn qua ngày.`],
+    ['Kỳ dữ liệu ngắn', `Chỉ ${D.tong.nd} ngày (${D.tong.d0} – ${D.tong.d1}). Một ngày lệch
+      đã kéo trung bình đi đáng kể, nên cột "so TB" ở mục ③ chỉ dùng để soi nhanh,
+      chưa đủ để kết luận xu hướng. Đổ thêm ngày rồi build lại thì các mốc
+      7/14/30 ngày sẽ tự hiện trong ô chọn.`],
+    ['Hai dạng mã khách hàng', `<code>object_value</code> có cả mã băm 20 ký tự lẫn số điện thoại
+      9–10 số. Hai dạng này <b>không đối chiếu được với nhau</b>, cùng một người có thể
+      nằm ở hai dòng khác nhau — số khách hàng là <i>cận trên</i>.`],
+    ['Tái phạm', `${fmt(nhieu)} khách bị alert từ 3 ngày trở lên trong ${D.tong.nd} ngày.
+      Nhóm này nếu giữ nguyên tần suất sẽ <b>không bao giờ đủ 30 ngày sạch để được ân xá</b>.`],
+    ['Ngưỡng đánh dấu là tương đối', `Đột biến ≥ ${D.cauhinh.dotbien}× · bắn dày ≥ ${D.cauhinh.apk}
+      alert/khách · phồng ≥ ${D.cauhinh.nguongKh} alert. Đây là mốc đặt tay khi dựng file,
+      đổi được bằng tham số khi build lại — <b>không phải ngưỡng nghiệp vụ đã duyệt</b>.`],
+    ['Khối công cụ điểm', `Ba mục ⓪ ① ② (gập lại ở đầu trang) cho thấy <b>khối lượng phải
+      xử lý</b> ứng với mỗi cách đặt điểm và ngưỡng. Việc chốt ngưỡng Impact chính thức
+      làm ở tài liệu phương pháp luận riêng, <b>không chốt trên file này</b>.`],
+  ];
+  $('warnBox').innerHTML = W.map(w=>
+    `<div class="note" style="margin-bottom:9px"><b style="color:var(--text)">${w[0]}.</b> ${w[1]}</div>`).join('');
+}
+
+/* ───────── header + đồng hồ ───────── */
+function renderHdr(){
+  $('hdrSub').innerHTML = `Nguồn: <span class="tag">${esc(D.file)}</span> ·
+    ${fmt(D.tong.alert)} alert · ${fmt(D.tong.kh)} khách hàng ·
+    <b>${D.tong.nd} ngày</b> (${D.tong.d0} – ${D.tong.d1}) ·
+    ${D.tong.kb}/${D.tong.kbCauHinh} kịch bản có alert`;
+}
+function tick(){
+  const n = new Date(), p = x => String(x).padStart(2,'0');
+  $('hdrClock').textContent = `PP-D  ${p(n.getHours())}:${p(n.getMinutes())}:${p(n.getSeconds())}`
+    + `  ·  ${n.getDate()}/${n.getMonth()+1}/${n.getFullYear()}`;
+}
+
+/* ───────── tooltip ───────── */
+function tipText(key){
+  const t = thr(), H = curHist(), N = total(H), c = bandCount(H, t);
+  const T = (ttl, body, eg) =>
+    `<span class="tt">${ttl}</span>${body}` + (eg?`<span class="eg">${eg}</span>`:'');
+  switch(key){
+  case 'fx': {
+    const r=(+$('pR').value/100), k0=D.kb[0];
+    return T('Cách tính điểm cho một khách trong một ngày',
+      `Điểm dựng lại từ <i>Level của kịch bản · điểm gốc · số lần nổ trong ngày</i>.<br><br>
+       <b>Tầng 1</b> — một kịch bản nổ n lần: <code>eᵢ = cap − (cap−base)·r^(n−1)</code>.
+       Càng nổ càng tiến sát trần <b>cap</b> nhưng không vượt.<br>
+       <b>Tầng 2</b> — dính nhiều kịch bản: <code>score = M + (100−M)·k·(1−∏(1−eⱼ/100))</code>,
+       M là điểm của kịch bản nặng nhất.`,
+      `<em>Ví dụ</em> <b>${esc(k0.ten)}</b> (${k0.lv}, gốc ${k0.sc}, trần ${k0.cap}):
+       nổ 1 lần <b>${k0.sc}</b> → 2 lần <b>${eff(k0.sc,k0.cap,2,r).toFixed(1)}</b>
+       → 3 lần <b>${eff(k0.sc,k0.cap,3,r).toFixed(1)}</b>.`);
+  }
+  case 'thr':
+    return T('Ba vạch chia bốn mức Impact',
+      `Kéo vạch để xem <b>khối lượng phải xử lý</b> thay đổi ra sao. Mỗi lượt (một khách
+       trong một ngày) rơi vào đúng một mức theo điểm của lượt đó.<br><br>
+       ${BAND.map((b,i)=>`<b style="color:${b.c}">${b.n}</b> — ${b.act}`).join('<br>')}`,
+      `<em>Đang đặt</em> ${t[0]} / ${t[1]} / ${t[2]} →
+       ${c.map((v,i)=>`<b style="color:${BAND[i].c}">${pc(v,N).toFixed(1)}%</b>`).join(' · ')}`);
+  case 'dist':
+    return T('Phân bố điểm của các lượt',
+      `Trục ngang là điểm 0–100, cột cao = nhiều lượt rơi vào mức điểm đó.
+       Màu cột đổi theo vạch ngưỡng đang đặt.<br><br>
+       Điểm <b>bám cụm</b> chứ không rải đều, vì hầu hết khách chỉ dính một vài tổ hợp
+       kịch bản quen thuộc. Chỗ <b>khe trống</b> (không lượt nào) là nơi đặt vạch an toàn nhất.`,
+      `<em>Đang xem</em> ${fmt(N)} lượt · trung vị ${pctlOf(H,50)} điểm ·
+       phân vị 95 = ${pctlOf(H,95)} · phân vị 99 = ${pctlOf(H,99)}`);
+  case 'day':
+    return T('Alert mỗi ngày trong kỳ',
+      `Cột = tổng alert toàn hệ trong ngày. Đường gạch cam = mức trung bình của kỳ.<br><br>
+       Cột vượt hẳn đường cam thường do: một kịch bản đổi tham số, data về dồn sau ngày lỗi,
+       hoặc có ổ gian lận thật. Xem mục ⑤ để biết kịch bản nào gây ra.`,
+      `<em>Trung bình</em> ${fmt(Math.round(D.tong.tbNgay))} alert/ngày ·
+       cao nhất ${fmt(Math.max(...D.ngay.map(x=>x.alert)))} ·
+       thấp nhất ${fmt(Math.min(...D.ngay.map(x=>x.alert)))}`);
+  case 'nhom':
+    return T('Bảy nhóm nghiệp vụ',
+      `Số lớn = alert của nhóm. Dòng <b>Kịch bản nổ x/y</b>: y là số kịch bản của nhóm
+       <b>đã cấu hình lên F2DR</b> (lấy từ sheet FINAL), x là số thực sự có alert trong kỳ.<br><br>
+       Nhóm có <b>0 alert</b> vẫn hiện, làm mờ đi — để thấy ngay nhóm nào đang im lặng
+       hoàn toàn, cần kiểm tra xem kịch bản có chạy không.`,
+      `<em>Toàn kỳ</em> ${D.tong.kb}/${D.tong.kbCauHinh} kịch bản có alert`);
+  case 'mat': {
+    const nd = Math.min(Math.max(1, ND_CUR), ndMax());
+    return T('Truy ngược: ngày lạ là do kịch bản nào?',
+      `Mỗi dòng một kịch bản, mỗi cột một ngày, ô càng sáng càng nhiều alert.<br><br>
+       Thấy ngày bất thường ở mục ③ thì <b>dóng thẳng xuống cột ngày đó</b>:<br>
+       • Cột sáng đều từ trên xuống → cả hệ cùng tăng, thường do data về dồn.<br>
+       • Chỉ vài ô sáng hẳn → đúng kịch bản đó bùng, đọc tên ở đầu dòng.<br><br>
+       Ô <b>Hiện … ngày</b> gõ được số bất kỳ từ 1 đến ${ndMax()}, luôn tính lùi
+       từ ngày mới nhất. Dòng <b>TỔNG THEO NGÀY</b> dưới chân bảng cho biết ngày
+       nào nhiều alert nhất trong đoạn đang xem.`,
+      `<em>Đang xem</em> ${nd} ngày · ${fmt(D.kb.length)} kịch bản ·
+       ngày mới nhất ${dLab(D.days[D.tong.nd-1])}`);
+  }
+  case 'note':
+    return T('Ghi lại kết quả điều tra',
+      `Mỗi kỳ xử lý alert xong thì ghi lại: điều tra bao nhiêu khách, phát hiện gì,
+       kịch bản nào cần chỉnh ngưỡng hay sửa chống lặp, việc nào đã làm, việc nào còn treo.<br><br>
+       Để lần sau mở file ra là biết kỳ trước đã kết luận gì, khỏi điều tra lại
+       cùng một thứ.`);
+  case 'khp':
+    return T('Ai bị bắn nhiều alert nhất',
+      `Chọn <b>một ngày</b> ở ô Ngày thì mọi con số tính lại trong đúng ngày đó —
+       alert, số kịch bản, và <b>điểm</b>. Điểm chấm theo từng ngày, không cộng dồn.<br><br>
+       Bấm một dòng để mở ra: từng ngày khách đó dính kịch bản nào, mấy lần,
+       điểm ngày đó bao nhiêu.<br><br>
+       Alert nhiều mà chỉ dính <b>1–2 kịch bản</b> → do chống lặp của kịch bản đó,
+       không phải người này nguy hiểm hơn. Dính <b>nhiều kịch bản khác nhau</b>
+       mới là tín hiệu đáng điều tra.`,
+      `<em>Ngưỡng phồng</em> ≥ ${D.cauhinh.nguongKh} alert (phân vị 99,5) —
+       ${D.topkh.filter(t=>t.flag).length} khách vượt`);
+  case 'warn':
+    return T('Những chỗ dễ đọc nhầm',
+      `Các lưu ý về đơn vị đếm, độ dài kỳ dữ liệu, và hai dạng mã khách hàng.
+       Đọc trước khi mang số ở file này đi báo cáo.`);
+  }
+  return '';
+}
+document.addEventListener('mouseover', e=>{
+  const el = e.target.closest('.ic'); if(!el) return;
+  const tp = $('tip');
+  tp.innerHTML = tipText(el.dataset.i);
+  tp.style.display='block';
+  const r = el.getBoundingClientRect(), b = tp.getBoundingClientRect();
+  let l = r.left, tpp = r.bottom + 8;
+  if(l + b.width > innerWidth - 12) l = innerWidth - b.width - 12;
+  if(tpp + b.height > innerHeight - 12) tpp = r.top - b.height - 8;
+  tp.style.left = Math.max(8,l)+'px'; tp.style.top = Math.max(8,tpp)+'px';
+});
+document.addEventListener('mouseout', e=>{
+  if(e.target.closest('.ic')) $('tip').style.display='none';
+});
+
+/* ───────── khởi động ───────── */
+$('mAllN').textContent = D.tong.nd;
+$('selDay').innerHTML = D.days.map(d=>`<option value="${d}">${d}</option>`).join('');
+
+/* ô chọn số ngày: chỉ đưa ra mốc <= số ngày thực có, mặc định 30 (hoặc cả kỳ nếu ít hơn) */
+function opNgay(sel, macdinh){
+  const moc = [7,14,30,60,90].filter(x => x < D.tong.nd);
+  moc.push(D.tong.nd);
+  const md = moc.includes(macdinh) ? macdinh : D.tong.nd;
+  $(sel).innerHTML = moc.map(x=>
+    `<option value="${x}"${x===md?' selected':''}>${
+      x===D.tong.nd ? `Cả kỳ (${x} ngày)` : `${x} ngày gần nhất`}</option>`).join('');
+}
+opNgay('dayNd', 30);      // mục ③ — mặc định 30 cột gần nhất
+/* mục ⑤ — ô gõ số ngày, mặc định 7, tối đa 30 (hoặc số ngày thực có nếu ít hơn) */
+$('matNd').max = ndMax();
+ND_CUR = Math.min(7, ndMax());
+$('matNd').value = ND_CUR;
+const opMoiNgay = `<option value="">Mọi ngày</option>` +
+  D.days.slice().reverse().map(d=>
+    `<option value="${d}">${dLab(d)} ${thu(d)}</option>`).join('');
+$('khNgay').innerHTML   = opMoiNgay;   // mục ⑥
+$('nhomNgay').innerHTML = opMoiNgay.replace('Mọi ngày', 'Toàn kỳ');   // mục ④
+$('pR').value = D.r*100; $('pK').value = D.k*100;
+$('vR').textContent = D.r.toFixed(2); $('vK').textContent = D.k.toFixed(2);
+/* khối công cụ điểm: mặc định ẨN, nhớ lựa chọn của người dùng cho lần mở sau */
+try{ if(localStorage.getItem('vh_fold')==='1') $('foldScore').classList.add('open'); }catch(e){}
+$('tLM').value = D.nguong[0]; $('tMH').value = D.nguong[1]; $('tHV').value = D.nguong[2];
+['gLow','gMed','gHigh','gVH'].forEach(id=>$(id).addEventListener('input',()=>{
+  const s=['gLow','gMed','gHigh','gVH'].reduce((a,i)=>a+(+$(i).value||0),0);
+  $('sumTgt').innerHTML=`Σ = <b style="color:${s===100?'var(--green)':'var(--orange)'}">${s}%</b>`;
+}));
+$('bResetFx').textContent = `↺ Về r=${D.r.toFixed(2)} · k=${D.k.toFixed(2)}`;
+renderHdr(); tick(); setInterval(tick, 1000);
+buildCur(); render();
+</script>
+</body>
+</html>

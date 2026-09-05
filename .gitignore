@@ -1,0 +1,28 @@
+# Không bao giờ đẩy secrets
+.streamlit/secrets.toml
+*.key
+.env
+*_SALT*
+# Khoá API của trợ lý — chỉ nằm trong secrets.toml (máy) hoặc ô Secrets
+# của Streamlit Cloud (web), không bao giờ trong repo
+
+# Rác Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Rác Office / hệ điều hành
+~$*
+*.tmp
+Thumbs.db
+.DS_Store
+
+# CSV cũ / bản sao lưu — chỉ đẩy đúng file đang dùng
+data/*_backup*.csv
+data/*_HONG_*.csv
+data/full_score_clean_v*.csv
+
+# TUYET DOI khong day file goc con so dien thoai that
+*_GOC_CO_SDT.csv
+*goc_truoc_andanh*
+_goc_co_sdt/

@@ -137,10 +137,23 @@ def _tra_loi(cau_hoi, d, kt):
     PH.them_luot(cau_hoi, van, goi_y, R)
 
 
+def _nut_tron():
+    """Trang thai THU GON: chi mot nut tron o goc phai duoi."""
+    with st.container():
+        GD.moc("f2dr-nut-moc")
+        if st.button("💬", key="f2dr_mo", help="Mở trợ lý hỏi đáp"):
+            st.session_state.chat_mo = True
+            st.rerun()
+
+
 def ve():
-    """Ve toan bo panel chat."""
+    """Ve tro ly: nut tron khi thu gon, panel day du khi mo."""
     PH.khoi_tao()
     GD.bat_css()
+
+    if not st.session_state.chat_mo:
+        _nut_tron()
+        return
 
     try:
         d, kt = PH.nap_du_lieu()
@@ -149,8 +162,15 @@ def ve():
         return
 
     with st.container():
-        GD.moc()
+        GD.moc("f2dr-chat-moc")
         GD.dau_trang(kt)
+
+        # Nut thu gon. Moc dat NGAY TRUOC nut de CSS bat bang selector anh em
+        # (+) — chinh xac hon nhieu so voi do tim theo do sau DOM.
+        GD.moc("f2dr-thu-moc")
+        if st.button("−", key="f2dr_thu", help="Thu gọn"):
+            st.session_state.chat_mo = False
+            st.rerun()
 
         # ── vung tin nhan ──
         st.markdown('<div class="f2dr-khung">', unsafe_allow_html=True)

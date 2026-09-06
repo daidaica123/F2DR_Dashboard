@@ -42,6 +42,14 @@
 }
 
 /* ═══════════ NÚT TRÒN KHI THU GỌN ═══════════ */
+/* Khi dashboard nằm trong iframe (bản deploy trên Streamlit), góc phải dưới
+   đã có huy hiệu của Streamlit chiếm chỗ — huy hiệu đó nằm ở trang cha nên
+   vẽ đè lên iframe, che mất một phần nút chat. Nâng nút và bong bóng thoại
+   lên cho thoát. Bản HTML mở thẳng bằng trình duyệt không có ai chiếm chỗ
+   nên giữ nguyên 24px. Lớp f2-nhung do _chat_ui.js gắn khi phát hiện mình
+   đang nằm trong iframe. */
+.f2-nhung .f2-nut{ bottom:82px }
+.f2-nhung .f2-thoai{ bottom:92px }
 .f2-nut{
   position:fixed; right:24px; bottom:24px; z-index:2147483000;
   width:62px; height:62px; border-radius:50%;
@@ -384,6 +392,7 @@ strong button.f2-ref{ font-weight:inherit }
 @media (max-width:720px){
   .f2-panel{ right:10px; left:10px; top:58px; bottom:10px; width:auto }
   .f2-nut{ right:16px; bottom:16px; width:56px; height:56px }
+  .f2-nhung .f2-nut{ bottom:74px }
 }
 @media (prefers-reduced-motion:reduce){
   .f2-panel, .f2-nut::after, .f2-cham, .f2-go i,

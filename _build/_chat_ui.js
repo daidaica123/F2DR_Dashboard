@@ -17,6 +17,17 @@
       chip = $("f2-chip"), phu = $("f2-phu"), conlai = $("f2-conlai"),
       thu = $("f2-thu");
 
+  /* Dashboard đang nằm trong iframe của trang khác (bản deploy trên
+     Streamlit) thì góc phải dưới không còn là của mình: huy hiệu Streamlit
+     nằm ở trang cha, vẽ đè lên iframe và che mất một phần nút chat. Gắn cờ
+     để CSS nâng nút lên. Trình duyệt chặn đọc window.top khi khác nguồn —
+     chính lúc ném lỗi cũng là lúc chắc chắn đang bị nhúng. */
+  try {
+    if (window.self !== window.top) document.body.classList.add("f2-nhung");
+  } catch (e) {
+    document.body.classList.add("f2-nhung");
+  }
+
   var BN = window.F2BoNao, TT = window.F2TriThuc;
 
   var SO_LUOT_TOI_DA = 40;
@@ -450,10 +461,28 @@
      Hai truong hop phai chua: bam vao chinh nut mo (khong thi vua mo da thu),
      va dang boi den chu trong panel roi tha chuot ra ngoai (van tinh la mot
      cu click, thu lai luc do la cuop mat thao tac cua nguoi dung). */
+  /* KHONG dung panel.contains(e.target) o day.
+     Nut goi y tu xoa chinh minh ngay trong onclick cua no: hoi() goi
+     veGoiY([]) -> goiy.innerHTML = "". Den luc su kien noi len den document
+     thi e.target da roi khoi cay DOM, contains() tra ve false, va panel bi
+     thu lai oan. composedPath() chup duong di TAI LUC PHAT su kien nen van
+     con nguyen ke ca khi nut da bi xoa. */
+  function trongKhung(e) {
+    var duong = e.composedPath ? e.composedPath() : null;
+    if (duong && duong.length) {
+      for (var i = 0; i < duong.length; i++) {
+        if (duong[i] === panel || duong[i] === nut ||
+            (oThoai && duong[i] === oThoai)) return true;
+      }
+      return false;
+    }
+    return panel.contains(e.target) || nut.contains(e.target) ||
+           !!(oThoai && oThoai.contains(e.target));
+  }
+
   document.addEventListener("click", function (e) {
     if (panel.classList.contains("f2-an")) return;
-    if (panel.contains(e.target) || nut.contains(e.target)) return;
-    if (oThoai && oThoai.contains(e.target)) return;
+    if (trongKhung(e)) return;
     var sel = window.getSelection && window.getSelection();
     if (sel && sel.rangeCount && !sel.isCollapsed) {
       var nd = sel.getRangeAt(0).commonAncestorContainer;

@@ -46,6 +46,14 @@ st.markdown("""
   header[data-testid="stHeader"]{background:transparent;height:3rem}
   [data-testid="stToolbar"]{background:transparent}
   #MainMenu, footer{visibility:hidden}
+  /* Huy hiệu Streamlit ở góc phải dưới đè lên nút chat của dashboard. Tên
+     data-testid đổi theo phiên bản nên liệt kê mấy cách viết cùng lúc —
+     trình duyệt lặng lẽ bỏ qua selector nó không hiểu. Đây chỉ là lớp thứ
+     hai: nút chat tự nâng lên khi biết mình nằm trong iframe (lớp f2-nhung
+     trong _chat_ui.js), nên dù Streamlit đổi tên lần nữa vẫn không bị che. */
+  [data-testid="stAppViewerBadge"], [data-testid="stStatusWidget"],
+  .viewerBadge_container__1QSob, .stAppViewerBadge,
+  a[href^="https://streamlit.io/cloud"]{display:none !important}
   .stApp{background:#070b14;color:#eef3fe}
   section[data-testid="stSidebar"]{background:#0b1120;border-right:1px solid #1c2a47}
   section[data-testid="stSidebar"] *{color:#eef3fe}

@@ -1,0 +1,482 @@
+<!--
+  ══════════════════════════════════════════════════════════════════════
+  PANEL CHAT — NGUỒN THIẾT KẾ DUY NHẤT
+
+  File này là nơi DUY NHẤT định nghĩa giao diện panel chat. Sửa ở đây thì
+  cả hai nơi dùng đều đổi theo:
+
+    1. Bản xem trước  — _build/xem_truoc.py nhét file này vào dashboard
+                        thật, ra một file HTML mở được ngay để duyệt
+    2. Bản chạy thật  — chatbot/giao_dien.py đọc khối <style> ở đây rồi
+                        nối thêm phần CSS riêng của Streamlit
+
+  Nhờ vậy không bao giờ có chuyện bản xem trước một kiểu, bản deploy một
+  kiểu khác.
+
+  Quy ước: mọi class đều mở đầu bằng f2- để không đụng class của dashboard
+  hay của Streamlit.
+  ══════════════════════════════════════════════════════════════════════
+-->
+
+<style id="f2-chat-css">
+/* ───────── biến màu: lấy đúng hệ màu dashboard ───────── */
+:root,
+.f2-panel,
+.f2-nut{
+  --f2-nen:#070b14;
+  --f2-panel:#0d1524;
+  --f2-panel2:#131d30;
+  --f2-vien:#1c2a47;
+  --f2-vien2:#2a3f6b;
+  --f2-chu:#eef3fe;
+  --f2-dim:#b4c0d6;
+  --f2-mo:#7a88a5;
+  --f2-mo2:#5f6f8f;
+  --f2-ngoc:#2ee8ff;
+  --f2-luc:#2ee98a;
+  --f2-cam:#ff9550;
+  --f2-do:#ff4d6b;
+  --f2-tim:#b98cff;
+  --f2-mono:ui-monospace,'Cascadia Code',Consolas,monospace;
+  --f2-body:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+
+/* ═══════════ NÚT TRÒN KHI THU GỌN ═══════════ */
+.f2-nut{
+  position:fixed; right:24px; bottom:24px; z-index:2147483000;
+  width:62px; height:62px; border-radius:50%;
+  background:linear-gradient(148deg,#1d86a0,#0d4f66);
+  border:1px solid rgba(46,232,255,.55);
+  display:flex; align-items:center; justify-content:center;
+  cursor:pointer; padding:0;
+  box-shadow:0 9px 28px rgba(0,0,0,.55), 0 0 0 4px rgba(46,232,255,.09);
+  transition:transform .16s cubic-bezier(.22,1,.36,1), box-shadow .16s;
+}
+.f2-nut:hover{
+  transform:translateY(-3px) scale(1.06);
+  box-shadow:0 14px 34px rgba(0,0,0,.62), 0 0 0 8px rgba(46,232,255,.17);
+}
+.f2-nut:focus-visible{ outline:2px solid var(--f2-ngoc, #2ee8ff); outline-offset:4px }
+/* vòng sóng lan toả — báo là bấm được */
+.f2-nut::after{
+  content:''; position:absolute; inset:-6px; border-radius:50%;
+  border:1px solid rgba(46,232,255,.30); pointer-events:none;
+  animation:f2-song 2.8s ease-out infinite;
+}
+@keyframes f2-song{
+  0%{ transform:scale(.94); opacity:.75 }
+  70%,100%{ transform:scale(1.22); opacity:0 }
+}
+/* huy hiệu số câu trả lời chưa đọc */
+.f2-nut .f2-huyhieu{
+  position:absolute; top:-2px; right:-2px; min-width:20px; height:20px;
+  border-radius:10px; background:var(--f2-do, #ff4d6b); color:#fff;
+  font:700 11px/20px var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); text-align:center; padding:0 5px;
+  border:2px solid var(--f2-nen, #070b14);
+}
+
+/* ═══════════ PANEL ═══════════
+   Cao từ gần đỉnh màn hình xuống sát đáy. Để panel co theo nội dung thì
+   lúc mới mở nó chỉ cao vài dòng, trông cụt lủn. */
+.f2-panel{
+  position:fixed; right:22px; top:76px; bottom:20px; z-index:2147483000;
+  width:412px; max-width:calc(100vw - 32px);
+  background:var(--f2-panel, #0d1524);
+  border:1px solid var(--f2-vien2, #2a3f6b); border-radius:18px;
+  box-shadow:0 20px 54px rgba(0,0,0,.64), 0 0 0 1px rgba(46,232,255,.09);
+  display:flex; flex-direction:column; overflow:hidden;
+  font-family:var(--f2-body, system-ui,-apple-system,'Segoe UI',Roboto,sans-serif);
+  animation:f2-len .24s cubic-bezier(.22,1,.36,1);
+}
+@keyframes f2-len{
+  from{ opacity:0; transform:translateY(18px) scale(.97) }
+  to  { opacity:1; transform:none }
+}
+.f2-an{ display:none !important }
+
+/* ═══════════ ROBOT CỬ ĐỘNG ═══════════
+   Ba nhịp chồng lên nhau cho ra cảm giác "đang sống" mà không nhức mắt:
+   thở (cả người nhô lên xuống rất chậm), chớp mắt (thưa và ngẫu nhiên),
+   ăng-ten sáng theo nhịp. Không cái nào nhanh hơn 2,6 giây. */
+.f2-nut svg{ animation:f2-tho 3.6s ease-in-out infinite; transform-origin:50% 60% }
+@keyframes f2-tho{
+  0%,100%{ transform:translateY(0) rotate(0deg) }
+  28%    { transform:translateY(-1.6px) rotate(-1.4deg) }
+  62%    { transform:translateY(.6px) rotate(1.1deg) }
+}
+/* Mắt: nháy bằng scaleY quanh chính tâm mắt. Hai mắt lệch pha một chút cho
+   tự nhiên, nhưng lệch quá thì thành lác nên chỉ 0,08s. */
+.f2-mat{ animation:f2-chop 5.4s ease-in-out infinite; transform-box:fill-box;
+         transform-origin:center }
+.f2-mat.p2{ animation-delay:.08s }
+@keyframes f2-chop{
+  0%,92%,100%{ transform:scaleY(1) }
+  95%        { transform:scaleY(.08) }
+  97%        { transform:scaleY(1) }
+}
+.f2-anten{ animation:f2-den 2.6s ease-in-out infinite }
+.f2-anten.p2{ animation-delay:1.3s }
+@keyframes f2-den{ 0%,100%{ opacity:.45 } 50%{ opacity:1 } }
+/* Đang nghĩ: nghiêng đầu và ăng-ten nhấp nhanh hơn hẳn — tín hiệu rõ ràng
+   là bot đang bận, khỏi phải nhìn ba chấm ở tận trong panel. */
+.f2-nut.f2-nghi svg{ animation:f2-nghieng 1.15s ease-in-out infinite }
+@keyframes f2-nghieng{
+  0%,100%{ transform:rotate(-7deg) translateY(0) }
+  50%    { transform:rotate(7deg) translateY(-2px) }
+}
+.f2-nut.f2-nghi .f2-anten{ animation-duration:.6s }
+.f2-dau svg .f2-mat{ animation-duration:6.8s }
+
+/* ═══════════ THU / PHÓNG ═══════════
+   Trước đây mở thì có animation còn đóng thì display:none phựt một cái —
+   lệch hẳn. Giờ đóng cũng co về phía nút tròn ở góc dưới phải. */
+.f2-panel{ transform-origin:calc(100% - 30px) calc(100% + 10px) }
+.f2-panel.f2-dong{
+  animation:f2-xuong .2s cubic-bezier(.4,0,.9,.3) forwards; pointer-events:none;
+}
+@keyframes f2-xuong{
+  from{ opacity:1; transform:none }
+  to  { opacity:0; transform:translateY(16px) scale(.94) }
+}
+/* Nút tròn cũng bung ra khi panel vừa đóng, cho thấy panel "chui về" đúng đó */
+.f2-nut.f2-hien{ animation:f2-bung .3s cubic-bezier(.22,1,.36,1) }
+@keyframes f2-bung{
+  from{ opacity:0; transform:scale(.4) translateY(10px) }
+  to  { opacity:1; transform:none }
+}
+
+/* ═══════════ BONG BÓNG THOẠI ═══════════
+   Nói bâng quơ vài câu cho đỡ vô hồn. Kỷ luật đặt trong JS: chỉ khi panel
+   đang đóng, im 45 giây đầu, tối đa 4 lần mỗi phiên, tự ẩn sau 9 giây. */
+.f2-thoai{
+  position:fixed; right:96px; bottom:34px; z-index:2147482999;
+  max-width:280px; padding:11px 14px; border-radius:14px 14px 4px 14px;
+  font:400 12.5px/1.55 var(--f2-body, system-ui,-apple-system,'Segoe UI',Roboto,sans-serif);
+  color:#eef3fe; cursor:pointer;
+  /* Nền ĐẶC, không trong suốt: bong bóng nổi trên bảng số dày đặc, để trong
+     suốt là chữ chìm hẳn vào nền, đọc không ra. */
+  background:linear-gradient(160deg,#1b3050,#101a2e);
+  border:1px solid rgba(46,232,255,.5);
+  box-shadow:0 14px 38px rgba(0,0,0,.72), 0 0 0 1px rgba(0,0,0,.4),
+             0 0 30px rgba(46,232,255,.2);
+  animation:f2-thoai-vao .32s cubic-bezier(.22,1,.36,1);
+}
+.f2-thoai::after{
+  content:''; position:absolute; right:-6px; bottom:9px; width:11px; height:11px;
+  background:#14213a;
+  border-right:1px solid rgba(46,232,255,.5);
+  border-bottom:1px solid rgba(46,232,255,.5);
+  transform:rotate(-45deg); border-radius:0 0 3px 0;
+}
+.f2-thoai b{ color:var(--f2-ngoc, #2ee8ff); font-weight:700 }
+.f2-thoai .f2-thoai-x{
+  display:block; margin-top:6px; font-size:10px; color:#8fa2c4;
+  border-top:1px solid rgba(120,165,225,.18); padding-top:5px;
+}
+.f2-thoai.f2-tat{ animation:f2-thoai-ra .26s ease-in forwards }
+@keyframes f2-thoai-vao{
+  from{ opacity:0; transform:translateX(14px) translateY(6px) scale(.92) }
+  to  { opacity:1; transform:none }
+}
+@keyframes f2-thoai-ra{
+  to{ opacity:0; transform:translateX(10px) scale(.94) }
+}
+@media(max-width:720px){ .f2-thoai{ display:none } }
+
+/* ───────── thanh tiêu đề ───────── */
+.f2-dau{
+  display:flex; align-items:center; gap:11px; padding:12px 14px; flex:none;
+  background:linear-gradient(180deg,rgba(46,232,255,.12),rgba(46,232,255,.02));
+  border-bottom:1px solid var(--f2-vien, #1c2a47);
+}
+.f2-dau svg{ flex:none; filter:drop-shadow(0 2px 6px rgba(46,232,255,.28)) }
+.f2-ten{
+  font-size:13.5px; font-weight:700; line-height:1.3; flex:1;
+  color:var(--f2-chu, #eef3fe); min-width:0;
+}
+.f2-ten small{
+  display:block; font-size:10px; font-weight:400; color:var(--f2-mo, #7a88a5);
+  font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); margin-top:1px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.f2-cham{
+  width:7px; height:7px; border-radius:50%; background:var(--f2-luc, #2ee98a);
+  box-shadow:0 0 8px var(--f2-luc, #2ee98a); flex:none;
+  animation:f2-nhay 2.4s infinite;
+}
+@keyframes f2-nhay{ 0%,100%{opacity:1} 50%{opacity:.28} }
+.f2-nut-dau{
+  width:28px; height:28px; border-radius:8px; flex:none; cursor:pointer;
+  background:rgba(10,16,32,.6); border:1px solid var(--f2-vien2, #2a3f6b);
+  color:#9fb3d4; font-size:17px; line-height:1;
+  display:flex; align-items:center; justify-content:center; transition:.13s;
+}
+.f2-nut-dau:hover{ border-color:var(--f2-ngoc, #2ee8ff); color:var(--f2-ngoc, #2ee8ff) }
+
+/* ───────── chip phạm vi đang lọc ───────── */
+.f2-chip{
+  flex:none; margin:9px 14px 0; display:inline-flex; align-items:center;
+  gap:6px; align-self:flex-start;
+  font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); font-size:10px; color:var(--f2-ngoc, #2ee8ff);
+  background:rgba(46,232,255,.09); border:1px solid rgba(46,232,255,.28);
+  border-radius:20px; padding:3px 10px;
+}
+.f2-chip b{ cursor:pointer; opacity:.7 }
+.f2-chip b:hover{ opacity:1 }
+
+/* ───────── vùng tin nhắn — phải cuộn được ───────── */
+.f2-tin{
+  flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;
+  padding:6px 0 2px; scrollbar-width:thin;
+  scrollbar-color:var(--f2-vien, #1c2a47) transparent;
+}
+.f2-tin::-webkit-scrollbar{ width:8px }
+.f2-tin::-webkit-scrollbar-thumb{ background:var(--f2-vien, #1c2a47); border-radius:4px }
+.f2-tin::-webkit-scrollbar-thumb:hover{ background:var(--f2-vien2, #2a3f6b) }
+.f2-tin::-webkit-scrollbar-track{ background:transparent }
+
+.f2-hang{ display:flex; margin:9px 13px }
+.f2-hang.toi{ justify-content:flex-end }
+.f2-bong{
+  max-width:87%; padding:9px 13px; border-radius:15px;
+  font-size:12.8px; line-height:1.62; color:var(--f2-dim, #b4c0d6);
+  word-wrap:break-word; overflow-wrap:anywhere;
+}
+.f2-bong.bot{
+  background:var(--f2-panel2, #131d30); border:1px solid var(--f2-vien, #1c2a47);
+  border-bottom-left-radius:5px;
+}
+.f2-bong.toi{
+  background:linear-gradient(135deg,#1c7386,#15566a); color:#f2fbff;
+  border:1px solid #2a94ab; border-bottom-right-radius:5px;
+}
+.f2-bong p{ margin:0 0 7px } .f2-bong p:last-child{ margin:0 }
+.f2-bong strong{ color:var(--f2-ngoc, #2ee8ff); font-weight:700 }
+.f2-bong.toi strong{ color:#c4f5ff }
+.f2-bong ul, .f2-bong ol{ margin:6px 0; padding-left:19px }
+.f2-bong li{ margin:3px 0 }
+.f2-bong code{
+  font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); font-size:11.5px; background:#0a1020;
+  padding:1px 5px; border-radius:3px; color:#8ce8ff;
+}
+.f2-bong pre{
+  background:#070d18; border:1px solid var(--f2-vien, #1c2a47); border-radius:7px;
+  padding:9px 11px; overflow-x:auto; font-size:11px; margin:7px 0;
+  font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace);
+}
+
+/* ba chấm đang gõ */
+.f2-go{ display:flex; gap:4px; padding:11px 14px }
+.f2-go i{
+  width:6px; height:6px; border-radius:50%; background:var(--f2-ngoc, #2ee8ff);
+  opacity:.35; animation:f2-go 1.25s infinite;
+}
+.f2-go i:nth-child(2){ animation-delay:.18s }
+.f2-go i:nth-child(3){ animation-delay:.36s }
+@keyframes f2-go{
+  0%,60%,100%{ opacity:.3; transform:translateY(0) }
+  30%{ opacity:1; transform:translateY(-4px) }
+}
+
+/* dòng trạng thái khi bot đang chạy các bước */
+.f2-buoc{
+  font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); font-size:10px; color:var(--f2-mo2, #5f6f8f);
+  padding:0 15px 7px;
+}
+
+/* nhãn chất lượng dưới câu trả lời */
+.f2-nhan{
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  padding:2px 15px 8px; font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); font-size:9.5px;
+}
+.f2-the{
+  border:1px solid var(--f2-vien, #1c2a47); border-radius:4px; padding:1.5px 7px;
+  color:var(--f2-mo2, #5f6f8f); background:#0a1020; white-space:nowrap;
+}
+.f2-the.tot{ color:var(--f2-luc, #2ee98a); border-color:rgba(46,233,138,.32) }
+.f2-the.canh{ color:var(--f2-cam, #ff9550); border-color:rgba(255,149,80,.34) }
+
+/* khối nguồn số liệu gập được */
+.f2-panel details{
+  margin:0 15px 9px; border:1px solid var(--f2-vien, #1c2a47); border-radius:7px;
+  background:#0a1020;
+}
+.f2-panel summary{
+  font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); font-size:10px; color:var(--f2-mo, #7a88a5);
+  padding:6px 10px; cursor:pointer; list-style:none;
+}
+.f2-panel summary::-webkit-details-marker{ display:none }
+.f2-panel summary:hover{ color:var(--f2-ngoc, #2ee8ff) }
+.f2-panel details pre{
+  margin:0; padding:9px 11px; font-size:10.5px; color:var(--f2-mo2, #5f6f8f);
+  overflow-x:auto; font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); line-height:1.55;
+}
+
+/* ───────── nút gợi ý ───────── */
+.f2-goiy{
+  flex:none; display:flex; flex-wrap:wrap; gap:6px; padding:8px 13px 0;
+}
+.f2-goiy button{
+  background:#111c33; border:1px solid var(--f2-vien2, #2a3f6b); color:#9fb3d4;
+  font-size:10.5px; padding:5px 11px; border-radius:20px; cursor:pointer;
+  font-family:var(--f2-body, system-ui,-apple-system,'Segoe UI',Roboto,sans-serif); line-height:1.35; transition:.13s;
+  max-width:100%; text-align:left;
+}
+.f2-goiy button:hover{
+  border-color:var(--f2-ngoc, #2ee8ff); color:var(--f2-ngoc, #2ee8ff);
+  background:rgba(46,232,255,.07);
+}
+
+/* ───────── tên bấm được trong câu trả lời ─────────
+   Tên kịch bản dài nên phải xuống dòng được và không phá nhịp đọc: giữ
+   nguyên cỡ chữ và nét chữ của câu văn, chỉ thêm gạch chân mảnh để biết
+   là bấm được. */
+button.f2-ref{
+  display:inline; background:none; border:0; padding:0; margin:0;
+  font:inherit; color:var(--f2-ngoc, #2ee8ff); cursor:pointer;
+  text-align:left; white-space:normal;
+  border-bottom:1px dashed rgba(46,232,255,.45);
+  transition:.13s;
+}
+button.f2-ref:hover{
+  color:#fff; background:rgba(46,232,255,.12);
+  border-bottom-color:var(--f2-ngoc, #2ee8ff);
+  border-radius:3px;
+}
+button.f2-ref:focus-visible{
+  outline:2px solid var(--f2-ngoc, #2ee8ff); outline-offset:2px;
+}
+strong button.f2-ref{ font-weight:inherit }
+
+/* ───────── ô nhập ───────── */
+.f2-nhap{
+  flex:none; display:flex; align-items:flex-end; gap:8px;
+  margin:9px 12px 12px; padding:5px 5px 5px 15px;
+  background:#0a1020; border:1px solid var(--f2-vien2, #2a3f6b);
+  border-radius:22px; transition:.15s;
+}
+.f2-nhap:focus-within{
+  border-color:var(--f2-ngoc, #2ee8ff); box-shadow:0 0 0 3px rgba(46,232,255,.11);
+}
+.f2-nhap textarea{
+  flex:1; background:transparent !important; border:0; outline:0;
+  resize:none; color:var(--f2-chu, #eef3fe) !important;
+  font-size:12.5px; font-family:var(--f2-body, system-ui,-apple-system,'Segoe UI',Roboto,sans-serif); line-height:1.5;
+  padding:7px 0; max-height:104px; caret-color:var(--f2-ngoc, #2ee8ff);
+}
+.f2-nhap textarea::placeholder{ color:var(--f2-mo2, #5f6f8f) }
+.f2-gui{
+  width:34px; height:34px; flex:none; border-radius:50%; border:0;
+  cursor:pointer; background:linear-gradient(145deg,#1d86a0,#0e5464);
+  color:#eafcff; font-size:15px; display:flex; align-items:center;
+  justify-content:center; transition:.14s;
+}
+.f2-gui:hover{ filter:brightness(1.22); transform:scale(1.06) }
+.f2-gui:disabled{ opacity:.4; cursor:default; transform:none; filter:none }
+
+/* dòng đếm lượt còn lại */
+.f2-conlai{
+  flex:none; text-align:center; font-family:var(--f2-mono, ui-monospace,'Cascadia Code',Consolas,monospace); font-size:9.5px;
+  color:var(--f2-mo2, #5f6f8f); padding:0 0 9px;
+}
+
+/* ───────── màn hình hẹp ───────── */
+@media (max-width:720px){
+  .f2-panel{ right:10px; left:10px; top:58px; bottom:10px; width:auto }
+  .f2-nut{ right:16px; bottom:16px; width:56px; height:56px }
+}
+@media (prefers-reduced-motion:reduce){
+  .f2-panel, .f2-nut::after, .f2-cham, .f2-go i,
+  .f2-nut svg, .f2-mat, .f2-anten, .f2-thoai{ animation:none !important }
+}
+</style>
+
+
+<!-- ═══════════ NÚT TRÒN ═══════════ -->
+<button class="f2-nut" id="f2-nut" title="Mở trợ lý hỏi đáp"
+        aria-label="Mở trợ lý hỏi đáp">
+  <!-- logo robot, vẽ inline để không phụ thuộc file ảnh ngoài -->
+  <svg viewBox="0 0 64 64" width="34" height="34" fill="none"
+       xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="f2gn" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#8af2ff"/><stop offset="1" stop-color="#3ab8e8"/>
+      </linearGradient>
+      <linearGradient id="f2mn" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#2b7fd8"/><stop offset="1" stop-color="#123a94"/>
+      </linearGradient>
+    </defs>
+    <path d="M32 3C17 3 5 13.7 5 27c0 7.6 4 14.3 10.2 18.6l-2.3 9.9c-.3 1.4 1.2
+      2.5 2.4 1.7l11.2-6.7c1.8.3 3.6.5 5.5.5 15 0 27-10.7 27-24S47 3 32 3z"
+      fill="url(#f2gn)"/>
+    <circle class="f2-anten" cx="14.5" cy="12" r="2.5" fill="#d6faff"/>
+    <circle class="f2-anten p2" cx="49.5" cy="12" r="2.5" fill="#d6faff"/>
+    <path d="M14.5 12.5v6.5M49.5 12.5v6.5" stroke="#d6faff" stroke-width="2.3"
+      stroke-linecap="round"/>
+    <rect x="8" y="20" width="6.5" height="14" rx="3.2" fill="#3ab8e8"/>
+    <rect x="49.5" y="20" width="6.5" height="14" rx="3.2" fill="#3ab8e8"/>
+    <rect x="13.5" y="15.5" width="37" height="14.5" rx="7.2" fill="#1c62c8"
+      opacity=".45"/>
+    <path d="M21.5 21h11M21.5 24.5h8.5" stroke="#d6faff" stroke-width="1.7"
+      stroke-linecap="round" opacity=".7"/>
+    <rect x="12.5" y="26" width="39" height="22" rx="10.5" fill="url(#f2mn)"/>
+    <circle class="f2-mat" cx="23.5" cy="35.5" r="4.2" fill="#7ff0ff"/>
+    <circle class="f2-mat p2" cx="40.5" cy="35.5" r="4.2" fill="#7ff0ff"/>
+    <rect x="27.5" y="41.5" width="9" height="3.2" rx="1.6" fill="#7ff0ff"/>
+  </svg>
+</button>
+
+
+<!-- ═══════════ PANEL ═══════════ -->
+<!-- Mac dinh THU lai thanh nut tron. Mo san thi panel che mat phan phai
+     cua dashboard ngay khi vua vao trang. -->
+<div class="f2-panel f2-an" id="f2-panel" role="dialog" aria-label="Trợ lý F2DR">
+
+  <div class="f2-dau">
+    <svg viewBox="0 0 64 64" width="32" height="32" fill="none"
+         xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <linearGradient id="f2gd" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#4fe3ff"/><stop offset="1" stop-color="#1568cf"/>
+        </linearGradient>
+        <linearGradient id="f2md" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#1c62c8"/><stop offset="1" stop-color="#0c2a7d"/>
+        </linearGradient>
+      </defs>
+      <path d="M32 3C17 3 5 13.7 5 27c0 7.6 4 14.3 10.2 18.6l-2.3 9.9c-.3 1.4 1.2
+        2.5 2.4 1.7l11.2-6.7c1.8.3 3.6.5 5.5.5 15 0 27-10.7 27-24S47 3 32 3z"
+        fill="url(#f2gd)"/>
+      <circle cx="14.5" cy="12" r="2.5" fill="#8af2ff"/>
+      <circle cx="49.5" cy="12" r="2.5" fill="#8af2ff"/>
+      <path d="M14.5 12.5v6.5M49.5 12.5v6.5" stroke="#8af2ff" stroke-width="2.3"
+        stroke-linecap="round"/>
+      <rect x="8" y="20" width="6.5" height="14" rx="3.2" fill="#1568cf"/>
+      <rect x="49.5" y="20" width="6.5" height="14" rx="3.2" fill="#1568cf"/>
+      <rect x="13.5" y="15.5" width="37" height="14.5" rx="7.2" fill="#0e3c96"
+        opacity=".5"/>
+      <path d="M21.5 21h11M21.5 24.5h8.5" stroke="#8af2ff" stroke-width="1.7"
+        stroke-linecap="round" opacity=".7"/>
+      <rect x="12.5" y="26" width="39" height="22" rx="10.5" fill="url(#f2md)"/>
+      <circle cx="23.5" cy="35.5" r="4.2" fill="#5aecff"/>
+      <circle cx="40.5" cy="35.5" r="4.2" fill="#5aecff"/>
+      <rect x="27.5" y="41.5" width="9" height="3.2" rx="1.6" fill="#5aecff"/>
+    </svg>
+    <span class="f2-ten">Trợ lý F2DR<small id="f2-phu">đang nạp dữ liệu…</small></span>
+    <span class="f2-cham" title="Sẵn sàng"></span>
+    <button class="f2-nut-dau" id="f2-thu" title="Thu gọn" aria-label="Thu gọn">−</button>
+  </div>
+
+  <div class="f2-chip f2-an" id="f2-chip"></div>
+
+  <div class="f2-tin" id="f2-tin"></div>
+
+  <div class="f2-goiy" id="f2-goiy"></div>
+
+  <div class="f2-nhap">
+    <textarea id="f2-o" rows="1" placeholder="Hỏi về dữ liệu kỳ này…"
+              aria-label="Câu hỏi"></textarea>
+    <button class="f2-gui" id="f2-gui" title="Gửi" aria-label="Gửi">↑</button>
+  </div>
+
+  <div class="f2-conlai" id="f2-conlai"></div>
+</div>

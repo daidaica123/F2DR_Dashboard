@@ -4,7 +4,7 @@ BUILD F2DR_Van_Hanh.html — cong cu XU LY ALERT DINH KY HANG TUAN.
 
 Giao dien dung Y HET he mau / bo cuc cua F2DR_Real_Lab:
   - 3 muc dau (CONG THUC SCORE / NGUONG IMPACT / PHAN BO SCORE) giu nguyen, o dau file
-  - phan van hanh (theo ngay, nhom nghiep vu, kich ban, KH phong alert) nam duoi
+  - phan van hanh (theo ngay, nhom nghiep vu, kich ban, KH nhieu alert) nam duoi
 
 Chay (tu thu muc HTML Scoring):
     py -3.10 _build\\build_van_hanh.py
@@ -40,7 +40,7 @@ XLS = _tim(os.path.join(HERE, "nhom_kb.json"),
            r"\File điền thông tin kịch bản_hành vi.xlsx")
 
 CAP = {"Low": 25, "Medium": 50, "High": 80, "Very High": 100}
-NG_MAC_DINH = [25, 55, 80]           # vach khoi tao cua 3 thanh keo
+NG_MAC_DINH = [30, 65, 82]           # vach khoi tao cua 3 thanh keo
 R0 = K0 = 0.7                        # r, k mac dinh cua cong thuc PP-D
 
 ap = argparse.ArgumentParser()
@@ -51,7 +51,9 @@ ap.add_argument("--dotbien", type=float, default=2.0,
                 help="Nguong danh dau dot bien: ngay cao nhat / trung binh")
 ap.add_argument("--apk", type=float, default=3.0,
                 help="Nguong danh dau alert/KH cao cua 1 kich ban")
-ap.add_argument("--topkh", type=int, default=80, help="So KH phong alert dua vao bang")
+ap.add_argument("--topkh", type=int, default=100,
+                help="So KH nhieu alert nhat dua vao bang. Dashboard cho "
+                     "nguoi dung chon hien 1..N, mac dinh 20.")
 ap.add_argument("--ghichep", default=os.path.join(HERE, "ghi_chep_dieu_tra.json"),
                 help="File JSON ghi chep dieu tra (muc 7). Khong co thi de trong.")
 a = ap.parse_args()
@@ -268,7 +270,7 @@ for t in TOPKH:
 n_dot = sum(1 for k in KB if k["flagDot"])
 n_day = sum(1 for k in KB if k["flagDay"])
 n_kh = sum(1 for t in TOPKH if t["flag"])
-print("Danh dau: %d KB dot bien | %d KB ban day | %d KH phong (>=%d alert)"
+print("Danh dau: %d KB dot bien | %d KB ban day | %d KH >=%d alert"
       % (n_dot, n_day, n_kh, nguong_kh))
 
 tb_ngay = float(np.mean([x["alert"] for x in NGAY]))
@@ -284,6 +286,31 @@ if os.path.exists(a.ghichep):
         print("!! Doc ghi chep loi (%s) -> de trong" % e)
 else:
     print("Ghi chep: chua co (%s)" % os.path.basename(a.ghichep))
+
+# Gan moi ghi chep vao DUNG MOT NGAY trong ky. Nho vay thanh chon ngay biet
+# ngay nao da dieu tra de to mau khac. Chap nhan "2026-08-28", "28/08/2026",
+# "28/08". Khong khop ngay nao -> _ngay = None, coi la ghi chep cap ky.
+def _khop_ngay(v):
+    t = str(v or "")
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", t)
+    if m:
+        return m.group(0) if m.group(0) in days else None
+    m = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{4}))?", t)
+    if m:
+        dd, mm, yy = int(m.group(1)), int(m.group(2)), m.group(3)
+        for g in days:
+            y, M, Dd = g.split("-")
+            if int(M) == mm and int(Dd) == dd and (yy is None or int(yy) == int(y)):
+                return g
+    return None
+
+n_gan = 0
+for _gh in GHICHEP:
+    _gh["_ngay"] = _khop_ngay(_gh.get("ngay"))
+    if _gh["_ngay"]:
+        n_gan += 1
+if GHICHEP:
+    print("Ghi chep: gan duoc %d/%d muc vao ngay cu the" % (n_gan, len(GHICHEP)))
 
 DATA = {
     "days": days, "ngay": NGAY, "kb": KB, "nhom": NHOM,

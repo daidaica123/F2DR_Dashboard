@@ -24,6 +24,12 @@ HTML = os.path.join(HERE, "F2DR_Van_Hanh.html")
 BUILD = os.path.join(HERE, "_build", "build_van_hanh.py")
 DATA = os.path.join(HERE, "data")
 
+# _build không phải package (không có __init__.py) nên phải thêm vào đường
+# tìm module. Lấy hàm ghep() từ đó thay vì chép lại — chép lại là mở đường
+# cho bản deploy lệch khỏi bản xem trước.
+sys.path.insert(0, os.path.join(HERE, "_build"))
+import xem_truoc                             # noqa: E402
+
 st.set_page_config(page_title="F2DR Vận hành",
                    page_icon="🛡️", layout="wide",
                    initial_sidebar_state="collapsed")
@@ -62,17 +68,52 @@ def doc_html(path):
         return f.read()
 
 
-def nhung(html, cao=3400):
-    """Nhúng dashboard vào trang.
+def khoa_api():
+    """Khoá Gemini cho trợ lý, lấy từ Streamlit Secrets.
 
-    Dùng srcdoc thay vì components.html() để tránh Streamlit bọc thêm một lớp
-    iframe nữa — hai lớp lồng nhau làm thanh cuộn trong ngoài đá nhau.
+    Nhận cả hai cách viết trong Secrets:
+        GEMINI_API_KEYS = ["...", "...", ...]   ← nhiều khoá, nên dùng cách này
+        GEMINI_API_KEY  = "..."                 ← một khoá
+
+    Mỗi khoá là một project riêng nên có hạn mức riêng; trợ lý tự xoay sang
+    khoá kế tiếp khi một cặp (khoá, model) hết lượt trong ngày.
+
+    Khoá KHÔNG BAO GIỜ nằm trong repo. Trên máy thì đọc từ
+    .streamlit/secrets.toml (đã gitignore), trên web thì đọc từ ô Secrets
+    của Streamlit Cloud.
+    """
+    ds = []
+    try:                                    # chưa cấu hình secrets thì st.secrets ném lỗi
+        nhieu = st.secrets.get("GEMINI_API_KEYS")
+        if nhieu:
+            ds = [k for k in list(nhieu) if k]
+        mot = st.secrets.get("GEMINI_API_KEY")
+        if mot and mot not in ds:
+            ds.insert(0, mot)
+    except Exception:
+        pass
+    if not ds and os.environ.get("GEMINI_API_KEY"):
+        ds = [os.environ["GEMINI_API_KEY"]]
+    return ds
+
+
+def nhung(html):
+    """Nhúng dashboard (đã kèm trợ lý) vào trang, chiếm trọn chiều cao màn hình.
+
+    Chiều cao phải là 100vh chứ KHÔNG phải một số pixel cố định. Nút chat
+    dùng position:fixed, mà mốc của position:fixed là khung nhìn của chính
+    iframe — iframe cao 3400px thì nút rơi xuống tận đáy 3400px đó, người
+    dùng cuộn mỏi tay mới thấy. Cho iframe đúng bằng màn hình thì dashboard
+    tự cuộn bên trong và nút nằm đúng góc phải dưới như bản HTML.
+
+    Dùng data: URL thay vì components.html() để tránh Streamlit bọc thêm một
+    lớp iframe nữa — hai lớp lồng nhau làm thanh cuộn trong ngoài đá nhau.
     """
     b64 = base64.b64encode(html.encode("utf-8")).decode("ascii")
     st.markdown(
         f'<iframe src="data:text/html;base64,{b64}" '
-        f'style="width:100%;height:{cao}px;border:0;display:block" '
-        f'sandbox="allow-scripts allow-same-origin"></iframe>',
+        f'style="width:100%;height:calc(100vh - 3.2rem);border:0;display:block" '
+        f'sandbox="allow-scripts allow-same-origin allow-popups"></iframe>',
         unsafe_allow_html=True)
 
 
@@ -88,6 +129,20 @@ with st.sidebar:
         with open(HTML, "rb") as f:
             st.download_button("⬇️ Tải file HTML", f, "F2DR_Van_Hanh.html",
                                "text/html", use_container_width=True)
+        st.caption("File tải về là dashboard thuần — không kèm trợ lý, "
+                   "vì kèm thì khoá API đi theo file luôn.")
+
+    st.divider()
+    # Trạng thái khoá: thiếu khoá thì trợ lý mở ra được nhưng hỏi gì cũng
+    # chịu. Nói thẳng ở đây, đừng để người dùng ngồi đoán.
+    _k = khoa_api()
+    if _k:
+        st.markdown("**Trợ lý hỏi đáp**  \n✅ %d khoá (%s)"
+                    % (len(_k), ", ".join("…" + k[-4:] for k in _k)))
+    else:
+        st.markdown("**Trợ lý hỏi đáp**  \n⚠️ chưa có khoá API")
+        st.caption("Dán khoá vào Settings → Secrets:  \n"
+                   "`GEMINI_API_KEYS = [\"khoa1\", \"khoa2\"]`")
 
     st.divider()
     st.markdown("**Dựng lại từ CSV mới**")
@@ -114,8 +169,9 @@ with st.sidebar:
 
     st.divider()
     st.caption(
-        "Dashboard là HTML tĩnh, mọi thao tác lọc và tính điểm chạy ngay "
-        "trong trình duyệt — không gọi về server."
+        "Dashboard là HTML tĩnh: lọc, sắp xếp và tính điểm đều chạy ngay "
+        "trong trình duyệt. Chỉ khi hỏi trợ lý mới có một lượt gọi ra "
+        "Gemini; số liệu trong câu trả lời vẫn lấy từ dữ liệu của trang."
     )
 
 # ══════════ NỘI DUNG ══════════
@@ -127,19 +183,20 @@ if not os.path.exists(HTML):
         "```\npy -3.10 _build/build_van_hanh.py --csv data/<file>.csv\n```")
     st.stop()
 
-# ══════════ TRỢ LÝ HỎI ĐÁP ══════════
-# Vẽ TRƯỚC dashboard, không phải sau.
+# ══════════ DASHBOARD + TRỢ LÝ ══════════
 #
-# CSS kéo khối này ra khỏi luồng trang rồi ghim vào góc phải dưới. Nhưng nếu
-# vì lý do gì đó CSS không ăn (Streamlit đổi cấu trúc DOM chẳng hạn), khối
-# sẽ nằm đúng chỗ nó được vẽ. Vẽ sau dashboard thì chỗ đó là *dưới* một
-# iframe cao 3400px — người dùng cuộn mỏi tay cũng không thấy.
+# Trợ lý được ghép vào dashboard NGAY LÚC CHẠY, bằng đúng hàm mà bản xem
+# trước dùng (_build/xem_truoc.py: ghep). Nhờ vậy bản deploy và bản HTML mở
+# bằng trình duyệt là một, không thể lệch nhau: cùng _chat_ui.html, cùng ba
+# file JS, cùng thứ tự nạp.
+#
+# Khác biệt duy nhất: khoá API không nằm trong file trên đĩa mà lấy từ
+# Streamlit Secrets, nên repo không bao giờ chứa khoá.
 try:
-    from chatbot import khung_chat
-    khung_chat.ve()
-except Exception as e:                      # chat hỏng thì dashboard vẫn chạy
-    with st.expander("⚠️ Trợ lý hỏi đáp chưa sẵn sàng", expanded=False):
-        st.caption(str(e))
-        st.caption("Dashboard bên dưới vẫn dùng bình thường.")
+    ra = xem_truoc.ghep(doc_html(HTML), khoa_api())
+except Exception as e:                      # ghép hỏng thì vẫn còn dashboard
+    st.warning("Không ghép được trợ lý — dashboard vẫn dùng bình thường.")
+    st.caption(str(e))
+    ra = doc_html(HTML)
 
-nhung(doc_html(HTML))
+nhung(ra)

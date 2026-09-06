@@ -26,3 +26,7 @@ data/full_score_clean_v*.csv
 *_GOC_CO_SDT.csv
 *goc_truoc_andanh*
 _goc_co_sdt/
+
+# Ban xem truoc: co NHUNG KHOA API de chay that tren may.
+# Tuyet doi khong commit.
+F2DR_Van_Hanh_xemtruoc.html

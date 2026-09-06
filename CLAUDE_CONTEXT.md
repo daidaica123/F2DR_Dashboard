@@ -159,8 +159,13 @@ Nhãn hiện `[80-81)`, tooltip ghi *"điểm từ 80 đến dưới 81"*. Quy �
 
 **Vì sao `[a, b)` chứ không `(a, b]`:** vì luật xếp mức vốn đã là *"điểm < ngưỡng thì thuộc mức dưới"*, tức cũng là `[a, b)`. Đo trên dữ liệu thật, 7 bộ ngưỡng: `[a,b)` lệch **0 lượt**; `(a,b]` lệch ở 6/7 bộ (có bộ **2.748 lượt**); làm tròn cũng lệch 6/7. Chọn `(a,b]` là tự tạo mâu thuẫn giữa biểu đồ và bảng mức.
 
-> ⚠️ **LƯU Ý MÂU THUẪN VỚI YÊU CẦU BÀN GIAO:** prompt bàn giao mô tả quy ước là `a < Score <= b` tức `(a, b]`. **Code hiện tại là `[a, b)` — ngược lại.**
-> Đây không phải lỗi: chủ dự án ban đầu yêu cầu `(a, b]`, sau đó chủ động dừng lại (*"dừng lại 1 chút t muốn bàn vs m nên quy ước thi như nào cho lợp hí"*) rồi **chốt đổi sang `[a, b)`** kèm ba việc đi cùng. Nếu ai bảo "sửa lại thành `(a,b]`", hãy nhắc con số **2.748 lượt** và hỏi lại trước khi làm.
+> ✅ **ĐÃ CHỐT VÀ ĐÃ XÁC NHẬN LẠI — `[a, b)` là quy ước chính thức.**
+>
+> Chuyện đã xảy ra, ghi lại để khỏi lặp: chủ dự án ban đầu yêu cầu `(a, b]`, sau đó chủ động dừng lại (*"dừng lại 1 chút t muốn bàn vs m nên quy ước thi như nào cho lợp hí"*), nghe số đo, rồi **chốt `[a, b)`** kèm ba việc đi cùng (nhãn `[80-81)`, bỏ làm tròn trước khi so ngưỡng, hiển thị cắt xuống).
+>
+> Trong yêu cầu bàn giao có nhắc lại nhầm thành `a < Score <= b` — đó là nhắc theo trí nhớ bản cũ. Chủ dự án đã **xác nhận lại ngày 06/09/2026: giữ `[a, b)`**. Code đang đúng, **không phải sửa gì**.
+>
+> Nếu sau này có ai bảo đổi sang `(a, b]`: đó là thay đổi làm dịch chuyển tới **2.748 lượt** và tạo mâu thuẫn giữa biểu đồ ② với bảng xếp mức. Hỏi lại cho chắc trước khi làm.
 
 **b) So ngưỡng bằng ĐIỂM THẬT, không làm tròn.**
 
@@ -423,9 +428,11 @@ Muốn đổi sang 30/100 ngày: đổi `NM_SO`, phần còn lại tự co giãn
 
 Làm bằng `nhomNgan()`, **không sửa dữ liệu gốc**. ✔ đúng như mô tả bàn giao. Nếu thấy tên dài xuất hiện trong `<script>` thì đó là **đúng** — dữ liệu gốc phải giữ nguyên để chatbot dùng.
 
-### 6.3 Quy ước cụm Score
+### 6.3 Quy ước cụm Score — `[a, b)`, đã xác nhận lại
 
-Xem [§3.3](#33-quy-ước-điểm-số--phần-dễ-làm-sai-nhất-đọc-kỹ). Nhắc lại vì đây là chỗ dễ bị sửa ngược nhất: **code là `[a, b)`**, prompt bàn giao ghi `(a, b]`. Đừng đổi nếu không có yêu cầu mới và không đọc lại lý do.
+Cụm `80–81` nghĩa là **`80 ≤ điểm < 81`**. Nhãn cột ghi thẳng `[80-81)`.
+
+Chủ dự án đã xác nhận lại quy ước này ngày 06/09/2026. **Code đang đúng, không phải sửa.** Lý do đầy đủ và số đo ở [§3.3](#33-quy-ước-điểm-số--phần-dễ-làm-sai-nhất-đọc-kỹ) — đọc trước nếu định đụng vào.
 
 ### 6.4 Deploy (`5d49487` + `bc73cf9`)
 

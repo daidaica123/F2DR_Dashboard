@@ -413,6 +413,33 @@
 .f2-the.tot{ color:var(--f2-luc, #2ee98a); border-color:rgba(46,233,138,.32) }
 .f2-the.canh{ color:var(--f2-cam, #ff9550); border-color:rgba(255,149,80,.34) }
 
+/* ───────── nút chỉ chỗ trên dashboard ─────────
+   Xanh lá, cùng màu với viền phát sáng của dòng được chỉ tới — bấm nút
+   xanh thì dòng viền sáng cũng xanh, mắt nối được hai thứ với nhau. */
+.f2-lai{ padding:1px 15px 9px; display:flex; align-items:center;
+         gap:8px; flex-wrap:wrap }
+.f2-lai-nut{
+  background:rgba(46,233,138,.1); border:1px solid rgba(46,233,138,.45);
+  color:var(--f2-luc, #2ee98a); font-size:11px; padding:5px 12px;
+  border-radius:20px; cursor:pointer;
+  font-family:var(--f2-body, system-ui, sans-serif);
+  line-height:1.35; transition:.13s; white-space:nowrap;
+}
+.f2-lai-nut:hover{ background:rgba(46,233,138,.2);
+                   border-color:var(--f2-luc, #2ee98a) }
+.f2-lai-nut:disabled{ opacity:.5; cursor:default }
+.f2-lai-nut.mo{
+  background:none; border-color:var(--f2-vien, #1c2a47);
+  color:var(--f2-mo2, #5f6f8f); font-size:10px; padding:4px 10px;
+}
+.f2-lai-nut.mo:hover{ color:var(--f2-dim, #b4c0d6);
+                      border-color:var(--f2-vien2, #2a3f6b) }
+.f2-lai-xong{
+  font-family:var(--f2-mono, ui-monospace, monospace); font-size:10px;
+  color:var(--f2-luc, #2ee98a); line-height:1.45;
+}
+.f2-lai-xong.mo{ color:var(--f2-mo2, #5f6f8f) }
+
 /* khối nguồn số liệu gập được */
 .f2-panel details{
   margin:0 15px 9px; border:1px solid var(--f2-vien, #1c2a47); border-radius:7px;

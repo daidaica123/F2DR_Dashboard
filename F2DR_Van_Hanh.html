@@ -51,6 +51,60 @@ h3{font-size:12px;margin:0 0 8px;color:var(--dim);font-weight:600;letter-spacing
 .card tbody tr:hover{background:rgba(46,232,255,.05)}
 .heat tbody tr:hover td.nm{color:var(--accent)}
 .heat tbody tr:hover{box-shadow:inset 3px 0 0 var(--accent)}
+
+/* ───────── dòng được trợ lý chỉ tới ─────────
+   Trợ lý trả lời "top 5 kịch bản…" rồi đánh dấu đúng 5 dòng đó trong bảng
+   38 dòng — không thì người đọc phải dò tên bằng mắt.
+
+   CHỈ làm sáng ĐƯỜNG VIỀN, tuyệt đối không đụng vào nền ô.
+   Bản đầu tôi tô nền vàng đè lên cả dòng: các ô vốn mang màu xanh theo mật
+   độ alert, vàng đè lên thành nâu xỉn — dữ liệu vừa mờ vừa bẩn, mà chính
+   cái mật độ màu đó mới là thứ người ta cần đọc. Sai ở chỗ đánh dấu mà
+   phá luôn nội dung muốn chỉ tới.
+
+   Dùng XANH LÁ chứ không phải xanh ngọc: xanh ngọc chính là màu của ô
+   nhiều alert, đánh dấu bằng nó thì ở vùng bảng dày đặc ô sáng, vạch đánh
+   dấu chìm nghỉm. Xanh lá chưa dùng cho ô dữ liệu nào nên nổi bật tuyệt
+   đối mà vẫn nằm trong hệ màu sẵn có. */
+tr.f2-sang > td{
+  box-shadow:inset 0 1.5px 0 var(--green), inset 0 -1.5px 0 var(--green);
+  position:relative;
+}
+/* Vạch trái dày hẳn — đây mới là thứ nhìn thấy đầu tiên khi lướt mắt dọc
+   cột tên. Viền trên/dưới bị các ô liền nhau che gần hết nên chỉ còn là
+   phụ trợ. */
+tr.f2-sang > td:first-child{
+  box-shadow:inset 4px 0 0 var(--green),
+             inset 0 1.5px 0 var(--green), inset 0 -1.5px 0 var(--green);
+  padding-left:6px;
+}
+/* Chấm tròn sáng đầu dòng: dấu hiệu thứ hai, thấy được ngay cả khi bảng
+   thu gọn hay khi in đen trắng. */
+tr.f2-sang > td:first-child::before{
+  content:''; position:absolute; left:-1px; top:50%;
+  width:4px; height:4px; margin-top:-2px; border-radius:50%;
+  background:var(--green); box-shadow:0 0 6px var(--green);
+}
+tr.f2-sang > td:last-child{
+  box-shadow:inset -3px 0 0 var(--green),
+             inset 0 1.5px 0 var(--green), inset 0 -1.5px 0 var(--green);
+}
+/* Quầng sáng quanh dòng — đây mới là thứ bắt mắt, không phải đổi màu.
+   Đặt trên tr chứ không trên td để quầng chạy quanh cả dòng. */
+tr.f2-sang{
+  filter:drop-shadow(0 0 4px rgba(46,233,138,.6));
+  animation:f2nhay 1.6s ease-in-out 3;
+}
+tr.f2-sang > td.nm, tr.f2-sang > td.l{
+  color:var(--green) !important; font-weight:600;
+}
+/* Thở nhẹ ba nhịp rồi đứng yên: đủ để mắt bắt được dòng nào mới, mà không
+   nhấp nháy gây nhức. Chỉ đổi độ đậm của quầng, không đổi màu ô. */
+@keyframes f2nhay{
+  0%,100%{ filter:drop-shadow(0 0 4px rgba(46,233,138,.6)) }
+  50%    { filter:drop-shadow(0 0 9px rgba(46,233,138,1)) }
+}
+@media (prefers-reduced-motion:reduce){ tr.f2-sang{ animation:none } }
 .card table tbody tr.kh-row:hover{background:rgba(46,232,255,.07)}
 
 /* Thẻ vào trang theo nhịp, mỗi thẻ trễ hơn thẻ trước một chút. Chỉ chạy MỘT

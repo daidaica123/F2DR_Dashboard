@@ -683,6 +683,89 @@ window.F2BoNao = (function () {
      model trước thì tụt xuống model kém trong khi bốn khoá kia còn nguyên
      hạn mức. Với 5 khoá x 5 model dùng được, sức chứa là ~500 lượt/ngày,
      tức khoảng 125-250 câu hỏi. */
+  /* ═══════════════ SUY RA LỆNH LÁI DASHBOARD ═══════════════
+     Từ chính lời gọi hàm mà model vừa thực hiện, suy ra nên chỉnh dashboard
+     thế nào để người dùng nhìn thấy đúng thứ vừa được nói.
+
+     Suy từ đây chứ không bắt model tự khai lệnh: nó đã chọn đúng hàm và
+     đúng tham số rồi. Bắt khai lại lần nữa vừa tốn token vừa thêm một chỗ
+     có thể sai — mà sai lệnh lái thì trang nhảy lung tung.
+
+     Trả về { lenh: [...], toSang: [tên kịch bản...] } hoặc null. */
+  function suyLenhLai(R) {
+    try {
+      if (!window.F2Lai || !window.F2Lai.dungDuoc()) return null;
+      var g = R.loiGoi || [];
+      if (!g.length) return null;
+
+      var lenh = [], sang = [], daKhoang = false;
+
+      g.forEach(function (x) {
+        var ts = x.tham_so || {}, kq = x.ketQua || {};
+
+        /* Khoảng ngày: chỉ đặt một lần, lấy lời gọi ĐẦU tiên có khoảng —
+           gọi nhiều hàm cùng khoảng thì đặt lại mấy lần là thừa. */
+        if (!daKhoang && (ts.tu || ts.den)) {
+          lenh.push({ viec: "khoang_ngay",
+                      tham_so: { tu: ts.tu, den: ts.den } });
+          daKhoang = true;
+        }
+
+        /* Tên kịch bản để tô sáng: gom từ mọi danh sách trả về. */
+        var ds = kq.danh_sach || kq.cac_kich_ban || kq.danh_sach_kich_ban;
+        if (ds && ds.length) {
+          ds.slice(0, 12).forEach(function (r) {
+            var t = r.kich_ban || r.ten || r.nhom || r.kich_ban_a;
+            if (t) sang.push(t);
+            if (r.kich_ban_b) sang.push(r.kich_ban_b);
+          });
+        }
+        if (kq.kich_ban && typeof kq.kich_ban === "string") {
+          sang.push(kq.kich_ban);
+        }
+
+        /* Hỏi về một kịch bản cụ thể -> lọc luôn tên đó cho bảng gọn lại. */
+        if (x.ham === "chi_tiet_kich_ban" && ts.ten) {
+          lenh.push({ viec: "loc_kich_ban",
+                      tham_so: { tu_khoa: String(ts.ten).slice(0, 26) } });
+        }
+        /* Hỏi về một khách -> tìm luôn mã đó ở mục ⑥. */
+        if ((x.ham === "ho_so_khach" || x.ham === "tim_khach") &&
+            (ts.ma_khach || ts.ma)) {
+          lenh.push({ viec: "loc_khach",
+                      tham_so: { tu_khoa: ts.ma_khach || ts.ma } });
+        }
+        /* Nói về nhóm nghiệp vụ -> gom nhóm cho dễ đối chiếu. */
+        if (x.ham === "thong_ke_nhom" || x.ham === "nhom_im_lang") {
+          lenh.push({ viec: "gom_nhom", tham_so: { bat: true } });
+        }
+        /* So hai kỳ / gom theo kỳ: bảng ngày không nói lên gì, thu gọn
+           lại để nhìn thẳng vào cột tổng. */
+        if (x.ham === "so_sanh_hai_ky" || x.ham === "gom_theo_ky") {
+          lenh.push({ viec: "thu_gon", tham_so: { bat: true } });
+        }
+      });
+
+      /* Không có lệnh nào mà vẫn có tên để tô sáng thì ít nhất cuộn tới
+         bảng kịch bản — người dùng còn thấy được dòng sáng. */
+      if (!lenh.length && sang.length) {
+        lenh.push({ viec: "cuon", tham_so: { muc: 5 } });
+      }
+      if (!lenh.length) return null;
+
+      /* Bỏ lệnh trùng: giữ lệnh đầu tiên của mỗi loại. */
+      var da = {}, loc = [];
+      lenh.forEach(function (l) {
+        if (da[l.viec]) return;
+        da[l.viec] = 1;
+        loc.push(l);
+      });
+      return { lenh: loc, toSang: sang.slice(0, 12) };
+    } catch (e) {
+      return null;      /* lái hỏng không được làm hỏng câu trả lời */
+    }
+  }
+
   function goiLLM(prompt, opt) {
     /* Chế độ proxy: hỏi máy chủ xem đang giữ mấy khoá trước đã, không thì
        dò theo con số dựng sẵn có thể đã cũ. Chỉ tốn một lượt cho cả phiên. */
@@ -1032,7 +1115,8 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
   function hoi(cauHoi, lichSu, ghiLog) {
     var t0 = Date.now();
     var R = { cacBuoc: [], duKien: [], canhBao: [], soLanGoiLLM: 0,
-              chanPII: null, piiDaCat: [], boDienGiai: false, nguonWeb: [] };
+              chanPII: null, piiDaCat: [], boDienGiai: false, nguonWeb: [],
+              loiGoi: [] };
     ghiLog = ghiLog || function () {};
     ghiLogChung = ghiLog;
     lichSu = lichSu || [];
@@ -1128,6 +1212,12 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
                 return k + "=" + qd.tham_so[k]; }).join(", ") + ")";
             R.cacBuoc.push({ moTa: moTa, ketQua: kq });
             R.duKien.push(kq);
+            /* Giữ nguyên lời gọi để suy ra lệnh lái dashboard. Suy từ đây
+               chứ không bắt model tự sinh lệnh: nó đã chọn đúng hàm và
+               đúng tham số rồi, bắt khai lại lần nữa vừa tốn token vừa
+               thêm một chỗ có thể sai. */
+            R.loiGoi.push({ ham: qd.ham, tham_so: qd.tham_so || {},
+                            ketQua: kq });
             hongLienTiep = 0;
           } catch (e) {
             hongLienTiep++;
@@ -1348,6 +1438,7 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
                            " chuỗi giống thông tin định danh khỏi câu trả lời");
             ghiLog("!! Cắt " + q.daCat.length + " chuỗi định danh ở đầu ra");
           }
+          R.lai = suyLenhLai(R);
           R.giay = (Date.now() - t0) / 1000;
           return R;
         });

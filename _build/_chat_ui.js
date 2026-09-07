@@ -285,6 +285,48 @@
     tin.appendChild(d);
   }
 
+  /* ───────── nút chỉ chỗ trên dashboard ─────────
+     Trả lời bằng chữ xong thì mời người dùng xem luôn trên bảng: bấm một
+     nút là trang cuộn tới đúng mục, đặt đúng bộ lọc, tô sáng đúng dòng.
+
+     Phải BẤM mới chạy, không tự nhảy (chủ dự án chốt): người ta có thể
+     đang xem dở một bộ lọc khác, nhảy đi mà không hỏi là cướp thao tác. */
+  function veLai(R) {
+    try {
+      if (!R || !R.lai || !window.F2Lai || !window.F2Lai.dungDuoc()) return;
+      var d = document.createElement("div");
+      d.className = "f2-lai";
+      var b = document.createElement("button");
+      b.className = "f2-lai-nut";
+      b.innerHTML = "&#128200; Xem trên dashboard";
+      b.title = "Cuộn tới đúng mục, đặt bộ lọc và tô sáng dòng vừa nói";
+      d.appendChild(b);
+      tin.appendChild(d);
+      cuonXuong();
+
+      b.onclick = function () {
+        var kq = window.F2Lai.chay(R.lai.lenh, R.lai.toSang);
+        if (!kq) {
+          b.disabled = true;
+          b.textContent = "không chỉnh được dashboard";
+          return;
+        }
+        /* Nói rõ vừa đổi cái gì + cho đường lui. Đổi trang mà im lặng thì
+           người dùng cuộn lên lại không hiểu vì sao bộ lọc khác đi. */
+        d.innerHTML = '<span class="f2-lai-xong">&#10003; ' + thoat(kq.moTa) +
+                      "</span>";
+        var u = document.createElement("button");
+        u.className = "f2-lai-nut mo";
+        u.textContent = "hoàn tác";
+        u.onclick = function () {
+          kq.hoanTac();
+          d.innerHTML = '<span class="f2-lai-xong mo">đã trả lại như cũ</span>';
+        };
+        d.appendChild(u);
+      };
+    } catch (e) { /* lái hỏng không được làm hỏng câu trả lời */ }
+  }
+
   function veNguon(R) {
     if (!R.cacBuoc || !R.cacBuoc.length) return;
     var noi = R.cacBuoc.filter(function (b) { return !b.ketQua._loi; })
@@ -364,6 +406,7 @@
         noiThamChieu(bong);
         veNhan(R);
         veNguon(R);
+        veLai(R);
         veGoiY(t.goiY.length ? t.goiY : GOI_Y_DAU.slice(0, 3));
         lichSu.push({ hoi: cau, dap: t.van });
         if (lichSu.length > 6) lichSu.shift();

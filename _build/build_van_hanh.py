@@ -29,9 +29,34 @@ def _tim(*ung_vien):
     return ung_vien[0]
 
 
-# CSV mac dinh: thu ca thu muc "data" (ban deploy) lan "Data" (ban goc tren may)
-DEF_CSV = _tim(os.path.join(PARENT, "data", "score_clean_2608_0109.csv"),
-               os.path.join(PARENT, "Data", "score_clean_2608_0109.csv"))
+# CSV mac dinh: tu tim file score_clean_*.csv MOI NHAT trong thu muc data.
+# Truoc day ghim cung ten file, doi ten data la phai sua code — de tu tim thi
+# nap ky moi chi viec bo file vao thu muc.
+def _csv_moi_nhat():
+    """File score_clean moi nhat trong thu muc data.
+
+    Nhan ca .csv lan .csv.gz — pandas doc gzip truc tiep, khong phai giai nen
+    truoc. Ban nen chi con ~8% dung luong (76 MB -> 6 MB) nen day len git
+    nhe hon han, ma noi dung y het.
+    """
+    ung = []
+    for thu_muc in ("data", "Data"):
+        p = os.path.join(PARENT, thu_muc)
+        if not os.path.isdir(p):
+            continue
+        for f in os.listdir(p):
+            # bo qua ban sao luu, chi lay file dang dung
+            if (f.startswith("score_clean")
+                    and (f.endswith(".csv") or f.endswith(".csv.gz"))
+                    and "_backup" not in f and "_truoc_" not in f
+                    and "_HONG_" not in f):
+                ung.append(os.path.join(p, f))
+    if not ung:
+        return os.path.join(PARENT, "data", "score_clean_full.csv.gz")
+    return max(ung, key=os.path.getmtime)
+
+
+DEF_CSV = _csv_moi_nhat()
 # So KB moi nhom lay tu sheet FINAL. Tren Cloud khong co file Excel -> dung
 # ban JSON chot san trong _build (sinh boi chinh script nay khi chay o may).
 XLS = _tim(os.path.join(HERE, "nhom_kb.json"),
@@ -51,9 +76,10 @@ ap.add_argument("--dotbien", type=float, default=2.0,
                 help="Nguong danh dau dot bien: ngay cao nhat / trung binh")
 ap.add_argument("--apk", type=float, default=3.0,
                 help="Nguong danh dau alert/KH cao cua 1 kich ban")
-ap.add_argument("--topkh", type=int, default=100,
-                help="So KH nhieu alert nhat dua vao bang. Dashboard cho "
-                     "nguoi dung chon hien 1..N, mac dinh 20.")
+ap.add_argument("--topkh", type=int, default=0,
+                help="So KH nhieu alert nhat dua vao bang. De 0 = tu chon "
+                     "theo do dai ky (~15 nguoi moi ngay, toi thieu 100, "
+                     "toi da 500). Dashboard cho chon hien 1..N, mac dinh 20.")
 ap.add_argument("--ghichep", default=os.path.join(HERE, "ghi_chep_dieu_tra.json"),
                 help="File JSON ghi chep dieu tra (muc 7). Khong co thi de trong.")
 a = ap.parse_args()
@@ -200,7 +226,12 @@ print("Luot : {:,}  (KH x ngay)".format(len(PICKS)))
 kh_tong = d.groupby("object_value").agg(
     alert=("AlertID", "size"), nkb=("usecase_clean", "nunique"),
     nngay=("ngay", "nunique")).reset_index().sort_values("alert", ascending=False)
-top = kh_tong.head(a.topkh)
+# So khach dua vao bang phai co theo DO DAI KY. Ghim cung 100 thi ky 7 ngay
+# la du, nhung ky 63 ngay do duoc 439 nguoi vuot nguong "phong alert" — cat
+# o 100 la giau mat phan duoi. Uoc ~15 nguoi moi ngay, kep trong [100, 500].
+N_TOP = a.topkh if a.topkh > 0 else max(100, min(500, ND * 15))
+top = kh_tong.head(N_TOP)
+print("Top KH      : %d nguoi dua vao bang (ky %d ngay)" % (len(top), ND))
 tap_top = set(top.object_value)
 
 # gom san: (KH, ngay) -> {kbIdx: so lan}

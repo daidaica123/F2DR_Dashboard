@@ -35,17 +35,48 @@ py -3.10 -m streamlit run app.py
 **Cách 2 — tại máy:**
 
 ```bash
-py -3.10 _build/build_van_hanh.py --csv data/<file>.csv
+py -3.10 _build/build_van_hanh.py
 ```
+
+Builder tự tìm file `score_clean_*` mới nhất trong `data/`, nhận cả `.csv`
+lẫn `.csv.gz`.
+
+## Nạp alert hằng ngày
+
+File alert xuất từ hệ thống (13 cột) thì dùng script riêng — nó tự dựng đủ
+21 cột, tính lại điểm, và **bỏ qua ngày đã có** nên chạy lại nhiều lần cũng
+không nhân đôi:
+
+```bash
+py -3.10 _build/nap_alert_ngay.py <file>.csv          # chạy thử
+py -3.10 _build/nap_alert_ngay.py <file>.csv --that   # ghi thật
+py -3.10 _build/build_van_hanh.py && py -3.10 _build/xem_truoc.py
+```
+
+| Việc | Cách làm |
+|---|---|
+| Ngày alert | 8 số đầu `AlertID` **trừ 2 ngày** (file ghi ngày *lên* alert) |
+| Điểm | tính lại PP-D 2 tầng, gom theo ngày — **không** đọc `last_risk_score` |
+| Mã khách dạng SĐT | băm sha256 (nhóm KÊNH dùng SĐT làm mã kênh) |
+| Nhóm nghiệp vụ | chuẩn hoá `NEW_AML` → `AML`, `NEW_FRESO` → `SÀN FRESO`… |
+
+Độ trễ khác 2 ngày thì đổi bằng `--lui N`.
+
+## Dữ liệu nén
+
+`data/score_clean_full.csv.gz` — **6 MB** thay vì 76 MB, nội dung y hệt
+(pandas đọc/ghi gzip trực tiếp). Cột `chi_tiet_alert` để rỗng `{}` cho toàn
+bộ: nó từng chứa ngưỡng phát hiện thật và vài khoá định danh, mà repo này
+công khai.
 
 Tham số chỉnh được:
 
 | Tham số | Mặc định | Ý nghĩa |
 |---|---|---|
-| `--csv` | `data/score_clean_2608_0109.csv` | File alert đã clean |
+| `--csv` | tự tìm file mới nhất | File alert đã clean (.csv hoặc .csv.gz) |
 | `--dotbien` | `2.0` | Đánh dấu đột biến khi ngày cao nhất ≥ N lần mức thường |
 | `--apk` | `3.0` | Đánh dấu bắn dày khi ≥ N alert mỗi khách |
-| `--topkh` | `80` | Số khách đưa vào bảng ⑥ |
+| `--topkh` | tự tính theo độ dài kỳ | Số khách đưa vào bảng ⑥ (100–500) |
 | `--ghichep` | `_build/ghi_chep_dieu_tra.json` | Nội dung mục ⑦ |
 
 ## Cấu trúc trang
@@ -101,10 +132,9 @@ Ba ranh giới không bao giờ phá:
 | Mọi con số trong câu trả lời phải truy được về dữ kiện | Chặn bịa số; số lạ thì viết lại, vẫn hỏng thì trả bảng thô |
 | Không suy luận nhân quả, không dự báo | Được nói "A giảm cùng lúc B ngừng bắn", không được nói "A giảm **vì** B" |
 
-Khi 26 hàm đóng sẵn không phủ được câu hỏi, trợ lý tự viết code pandas và
-chạy trong hộp cát: cấm `import`/`open`/`eval`, cấm cột `chi_tiet_alert`,
-giới hạn thời gian chạy. Code tự viết luôn hiện ra trong mục *nguồn số liệu*
-để kiểm chứng.
+Trợ lý có **23 hàm truy vấn** đóng sẵn, đọc thẳng biến `D` của dashboard nên
+luôn khớp với con số đang hiển thị — kể cả khi người dùng vừa kéo thanh
+ngưỡng. LLM chỉ chọn hàm và tham số, không tự tính.
 
 ### Khoá API
 
@@ -119,43 +149,30 @@ File `secrets.toml` đã nằm trong `.gitignore`. **Không bao giờ commit kho
 
 Thiếu khoá thì dashboard vẫn chạy bình thường, chỉ mất ô chat.
 
-### Kiểm thử
-
-```bash
-py -3.13 -m chatbot.kiem_thu
-```
-
-Bộ kiểm thử **không** so với số cố định — vì dữ liệu đổi hằng ngày. Nó so
-**hai đường tính độc lập**: kết quả hàm phải khớp với kết quả tính lại từ
-CSV bằng cách khác, và điểm Python phải khớp từng lượt với JS trong
-dashboard. Kiểu kiểm tra này vẫn đúng sau mỗi lần nạp dữ liệu mới.
-
 ## Cấu trúc thư mục
 
 ```
-app.py                          app Streamlit bọc HTML
-F2DR_Van_Hanh.html              dashboard đã nhúng dữ liệu
-data/score_clean_2608_0109.csv  dữ liệu alert nguồn
+app.py                            app Streamlit bọc HTML + ghép trợ lý lúc chạy
+F2DR_Van_Hanh.html                dashboard đã nhúng dữ liệu
+data/score_clean_full.csv.gz      dữ liệu alert nguồn (nén, 6 MB)
 _build/
-  build_van_hanh.py             script dựng dashboard
-  _van_hanh_template.html       khung giao diện
-  nhom_kb.json                  số KB mỗi nhóm (chốt từ sheet FINAL)
-  clean_2608_0109.py            script làm sạch alert thô → CSV
-  an_danh_sdt.py                ẩn danh bước 1 — quét theo dạng số
-  an_danh_bo_sung.py            ẩn danh bước 2 — quét theo tên khoá JSON
-  tra_nguoc.py                  tra mã băm ↔ số thật (cần muối)
-chatbot/
-  nap.py                        nạp CSV + dựng bảng kiến thức (tự nhận file mới)
-  diem.py                       công thức PP-D — bản Python, khớp JS từng lượt
-  truy_van.py                   26 hàm truy vấn đóng sẵn
-  hop_cat.py                    chạy code LLM tự viết, có kiểm soát
-  kiem_chung.py                 đối chiếu từng con số, chặn bịa
-  tro_ly.py                     vòng lặp suy luận nhiều bước
-  llm.py                        gọi Gemini, tự thử lại khi quá tải
-  khung_chat.py                 ghép giao diện với trợ lý
-  giao_dien.py                  CSS panel chat nổi
-  phien.py                      trạng thái phiên + cache theo mtime
-  kiem_thu.py                   bộ kiểm thử
+  build_van_hanh.py               dựng dashboard
+  xem_truoc.py                    ghép trợ lý -> bản xem trước (có khoá)
+  _van_hanh_template.html          khung giao diện dashboard
+  _chat_ui.html / _chat_ui.js      giao diện panel chat
+  _chat_tri_thuc.js                23 hàm truy vấn, đọc thẳng biến D
+  _chat_bo_nao.js                  vòng lặp suy luận, chặn PII, kiểm chứng số
+  soat_js.py                       soát cú pháp JS trước khi ghép
+  nhom_kb.json                     số KB mỗi nhóm (chốt từ sheet FINAL)
+
+  ── nạp dữ liệu ──
+  nap_alert_ngay.py               file alert hệ thống (13 cột) -> append
+  clean_data_full.py              gộp thư mục file thô nhiều kịch bản
+  thay_kich_ban.py                thay toàn bộ alert của một kịch bản
+  bo_sung_ngay.py                 bù một ngày thiếu của một kịch bản
+  an_danh_sdt.py                  ẩn danh bước 1 — quét theo dạng số
+  an_danh_bo_sung.py              ẩn danh bước 2 — quét theo tên khoá JSON
+  tra_nguoc.py                    tra mã băm ↔ số thật (cần muối)
 ```
 
 ## Dữ liệu đã ẩn danh

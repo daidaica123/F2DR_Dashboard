@@ -227,6 +227,74 @@ window.F2TriThuc = (function () {
     };
   };
 
+  /* Gom alert theo TUẦN hoặc THÁNG — chỉ có nghĩa khi kỳ đủ dài.
+     Kỳ 7 ngày thì gom tuần ra đúng một dòng, vô ích; nhưng kỳ vài chục ngày
+     thì "tuần này so tuần trước" là câu hỏi tự nhiên nhất, mà so từng ngày
+     lại nhiễu vì cuối tuần luôn thấp hơn ngày thường.
+     Tự chặn khi kỳ quá ngắn thay vì trả về một dòng rồi để model tự diễn
+     giải thành xu hướng. */
+  H.gom_theo_ky = function (ts) {
+    var d = duLieu();
+    var muc = (ts && ts.muc) || "tuan";
+    if (muc !== "tuan" && muc !== "thang")
+      throw new Error("muc phải là 'tuan' hoặc 'thang'");
+    var toiThieu = muc === "tuan" ? 14 : 45;
+    if (d.tong.nd < toiThieu) {
+      return {
+        _mo_ta: "Kỳ chỉ có " + d.tong.nd + " ngày",
+        _khong_du_dai: true,
+        _giai_thich: "Gom theo " + (muc === "tuan" ? "tuần" : "tháng") +
+          " cần ít nhất " + toiThieu + " ngày mới so sánh được. Kỳ này " +
+          d.tong.nd + " ngày — dùng alert_theo_ngay hoặc so_sanh_ngay."
+      };
+    }
+    /* Khoá gom: tuần lấy thứ Hai đầu tuần, tháng lấy YYYY-MM */
+    function khoa(s) {
+      if (muc === "thang") return s.slice(0, 7);
+      var t = new Date(s + "T00:00:00");
+      var g = t.getDay();                       // 0 = CN
+      t.setDate(t.getDate() - (g === 0 ? 6 : g - 1));
+      /* Ghép tay từ giờ địa phương — toISOString() quy về UTC nên ở múi +7
+         sẽ lùi mất một ngày, thứ Hai hoá Chủ nhật tuần trước. */
+      return t.getFullYear() + "-" +
+        ("0" + (t.getMonth() + 1)).slice(-2) + "-" +
+        ("0" + t.getDate()).slice(-2);
+    }
+    var gom = {}, thuTu = [];
+    d.ngay.forEach(function (x) {
+      var k = khoa(x.ngay);
+      if (!gom[k]) { gom[k] = { k: k, alert: 0, nd: 0, kh: 0, khMoi: 0 };
+                     thuTu.push(k); }
+      gom[k].alert += x.alert; gom[k].nd++;
+      gom[k].kh += x.kh; gom[k].khMoi += x.khMoi;
+    });
+    var ds = thuTu.map(function (k) {
+      var g = gom[k];
+      return {
+        ky: muc === "thang" ? g.k : "tuần từ " + g.k,
+        so_ngay: g.nd,
+        alert: g.alert,
+        alert_moi_ngay: lam(g.alert / g.nd, 1),
+        /* Cộng ngang số khách của từng ngày KHÔNG ra số người thật — một
+           người bị bắt 3 ngày sẽ đếm 3 lần. Gọi đúng tên là 'lượt'. */
+        luot_khach: g.kh,
+        khach_lan_dau: g.khMoi
+      };
+    });
+    for (var i = 1; i < ds.length; i++) {
+      var tr = ds[i - 1].alert_moi_ngay;
+      ds[i].so_ky_truoc_phan_tram = tr ? lam((ds[i].alert_moi_ngay - tr) / tr * 100, 1) : null;
+    }
+    return {
+      _mo_ta: "Alert gom theo " + (muc === "tuan" ? "TUẦN" : "THÁNG") +
+              " trong " + phamVi(null),
+      _ghi_chu: "So sánh dùng alert_moi_ngay chứ không dùng tổng: kỳ đầu và " +
+        "kỳ cuối thường thiếu ngày nên tổng không so được với nhau. " +
+        "'luot_khach' là lượt (khách × ngày), KHÔNG phải số người riêng biệt.",
+      cac_ky: ds
+    };
+  };
+
   H.ngay_bat_thuong = function (ts) {
     var d = duLieu(), ng = (ts && ts.nguong) || 1.3, tb = d.tong.tbNgay;
     var cao = [], thap = [];
@@ -946,6 +1014,8 @@ window.F2TriThuc = (function () {
     alert_theo_ngay: "Số alert/khách/kịch bản từng ngày trong kỳ",
     ngay_bat_thuong: "Ngày nào lệch hẳn so trung bình. Tham số: nguong (mặc định 1.3)",
     so_sanh_ngay: "So hai ngày với nhau. Tham số: ngay_a, ngay_b (YYYY-MM-DD)",
+    gom_theo_ky: "Gom alert theo TUẦN hoặc THÁNG, kèm % so kỳ liền trước. " +
+      "Dùng khi hỏi xu hướng dài hơn một ngày. Tham số: muc = 'tuan' | 'thang'",
     top_kich_ban: "Kịch bản nhiều alert nhất. Tham số: n, ngay, nhom",
     chi_tiet_kich_ban: "Hồ sơ đầy đủ một kịch bản. Tham số: ten",
     kich_ban_dot_bien: "Kịch bản có ngày vọt hẳn. Tham số: nguong",
@@ -983,6 +1053,40 @@ window.F2TriThuc = (function () {
     return kq;
   }
 
+  /* Danh sách ngày: kỳ ngắn thì liệt kê hết, kỳ dài thì nói khoảng + chỉ nêu
+     ngày HỤT (nếu có). Kỳ 63 ngày mà rải hết ra tốn 779 ký tự chỉ để nói một
+     điều model tự suy được từ ngày đầu và ngày cuối. Ngày hụt thì ngược lại
+     — model KHÔNG tự biết, mà đó chính là thứ nó cần để khỏi trả lời về một
+     ngày không có dữ liệu. */
+  function moTaNgay(d) {
+    var ds = d.days;
+    if (ds.length <= 14) {
+      return "  CÁC NGÀY CÓ DỮ LIỆU: " + ds.join(", ");
+    }
+    var co = {}, i;
+    for (i = 0; i < ds.length; i++) co[ds[i]] = 1;
+    /* KHÔNG dùng toISOString(): nó quy về UTC, máy ở múi giờ +7 thì
+       new Date("2026-07-01T00:00:00").toISOString() ra "2026-06-30T17:00:00Z",
+       cắt 10 ký tự thành 2026-06-30 — sinh ra một "ngày hụt" không có thật.
+       Tự ghép từ giờ ĐỊA PHƯƠNG mới đúng. */
+    var hut = [], t = new Date(ds[0] + "T00:00:00");
+    var het = new Date(ds[ds.length - 1] + "T00:00:00");
+    while (t <= het) {
+      var s = t.getFullYear() + "-" +
+        ("0" + (t.getMonth() + 1)).slice(-2) + "-" +
+        ("0" + t.getDate()).slice(-2);
+      if (!co[s]) hut.push(s);
+      t.setDate(t.getDate() + 1);
+    }
+    return "  CÁC NGÀY CÓ DỮ LIỆU: " + ds.length + " ngày LIÊN TIẾP từ " +
+      ds[0] + " đến " + ds[ds.length - 1] +
+      (hut.length
+        ? "\n  ⚠ HỤT " + hut.length + " ngày (không có dữ liệu, đừng trả lời " +
+          "về những ngày này): " + hut.slice(0, 12).join(", ") +
+          (hut.length > 12 ? " …" : "")
+        : " — không hụt ngày nào");
+  }
+
   /* Bảng kiến thức nhét vào prompt — để LLM biết cái gì là thực thể nội bộ */
   function moTaKy() {
     var d = duLieu(), tsd = thamSoDiem();
@@ -999,7 +1103,7 @@ window.F2TriThuc = (function () {
           tsd.mac_dinh.k + " / " + tsd.mac_dinh.nguong.join(" / ") +
           " — mọi con số về mức Impact phải tính theo giá trị ĐANG ĐẶT)"
         : " (đúng mặc định)") + "\n\n" +
-      "  CÁC NGÀY CÓ DỮ LIỆU: " + d.days.join(", ") + "\n\n" +
+      moTaNgay(d) + "\n\n" +
       "  CÁC NHÓM NGHIỆP VỤ:\n" +
       d.nhom.map(function (n) {
         return "    - " + n.ten + ": " + n.alert + " alert, " + n.kh +
@@ -1009,7 +1113,30 @@ window.F2TriThuc = (function () {
       d.kb.map(function (k) {
         return "    - " + k.ten + " | nhóm " + k.nhom + " | " + k.lv +
                " | " + k.sc + " điểm gốc | " + k.alert + " alert";
-      }).join("\n");
+      }).join("\n") +
+      moTaGioiHanBang(d);
+  }
+
+  /* Ranh giới của DỮ LIỆU trong file — khác với giới hạn về cách trả lời.
+     Kỳ 7 ngày thì mấy chỗ này không lộ (bảng top phủ gần hết khách), nhưng
+     kỳ 63 ngày thì lệch hẳn: 87.187 khách mà bảng chỉ giữ 500 người nặng
+     nhất. Model không biết thì sẽ nói "khách X không có trong kỳ" trong khi
+     thật ra chỉ là X không lọt top. */
+  function moTaGioiHanBang(d) {
+    var n = (d.topkh || []).length, t = d.tong.kh;
+    if (!n || n >= t) return "";
+    var it = d.topkh[n - 1];
+    return "\n\n  ⚠ RANH GIỚI DỮ LIỆU — đọc kỹ trước khi kết luận:\n" +
+      "    - Bảng xếp hạng khách (top_khach_hang, khach_tai_pham, " +
+      "khach_nhieu_kich_ban) chỉ chứa " + n.toLocaleString("vi") +
+      " người NẶNG NHẤT trong tổng số " + t.toLocaleString("vi") + " khách.\n" +
+      "      Người thứ " + n + " có " + (it ? it.alert : "?") + " alert. " +
+      "Không tìm thấy một khách trong bảng KHÔNG có nghĩa là khách đó không " +
+      "bị alert — chỉ nghĩa là không lọt top. Nói rõ điều này thay vì " +
+      "khẳng định 'không có trong kỳ'.\n" +
+      "    - Ngược lại, các hàm thống kê theo NGÀY / KỊCH BẢN / NHÓM và " +
+      "hanh_vi_theo_cum_diem tính trên TOÀN BỘ " +
+      d.tong.luot.toLocaleString("vi") + " lượt, không bị cắt.";
   }
 
   return {

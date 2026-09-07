@@ -19,6 +19,12 @@ Thumbs.db
 
 # CSV cũ / bản sao lưu — chỉ đẩy đúng file đang dùng
 data/*_backup*.csv
+# mọi bản sao lưu trước khi sửa (truoc_bosung, truoc_thayKB, truoc_nap…)
+data/*_truoc_*.csv
+data/*_truoc_*.csv.gz
+# bản CSV chưa nén — chỉ đẩy bản .csv.gz (76 MB xuống 6 MB, nội dung y hệt)
+data/score_clean_full.csv
+data/score_clean_2608_0109.csv
 data/*_HONG_*.csv
 data/full_score_clean_v*.csv
 

@@ -624,6 +624,17 @@ td.xuhuong{white-space:nowrap}
         border-radius:4px;border-color:var(--border-hi);color:var(--accent);
         background:rgba(46,232,255,.1)}
 .ndstep:hover{background:rgba(46,232,255,.25);border-color:var(--accent);color:#fff}
+/* ô ngày nhỏ trong thanh lọc — cùng kiểu với ô nhập số bên cạnh.
+   color-scheme:dark để trình duyệt vẽ lịch nền tối; icon lịch mặc định màu
+   đen nên phải lật sáng rồi nhuộm xanh, y như ô #ngayChon ở thanh chọn ngày. */
+.dmini{color-scheme:dark;background:var(--panel2);border:1px solid var(--border-hi);
+       border-radius:4px;color:var(--accent);font-family:var(--mono);
+       font-size:11.5px;padding:2px 4px;cursor:pointer}
+.dmini:focus{outline:none;border-color:var(--accent)}
+.dmini::-webkit-calendar-picker-indicator{cursor:pointer;opacity:1;padding:1px;
+  filter:invert(72%) sepia(89%) saturate(1900%) hue-rotate(140deg) brightness(1.15)}
+.dmini::-webkit-calendar-picker-indicator:hover{background:rgba(46,232,255,.2);
+  border-radius:3px}
 
 /* --- ô lọc --- */
 .filt{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
@@ -1002,7 +1013,7 @@ body.dangmo{overflow:hidden}
 
 <!-- ══════════ ① NGƯỠNG IMPACT ══════════ -->
 <div class="card">
-  <div class="card" id="m1c"-head">
+  <div class="card-head" id="m1c">
     <div><h2>① NGƯỠNG IMPACT <i class="ic" data-i="thr">i</i></h2>
       <span class="card-sub">Kéo thanh — số liệu bên dưới nhảy theo tức thì</span></div>
     <div class="btn-row">
@@ -1061,10 +1072,10 @@ body.dangmo{overflow:hidden}
 
 <!-- ══════════ ② PHÂN BỐ SCORE ══════════ -->
 <div class="card">
-  <div class="card" id="m2c"-head">
-    <div><h2>② PHÂN BỐ SCORE (mỗi KH tính riêng từng ngày) <i class="ic" data-i="dist">i</i></h2>
+  <div class="card-head" id="m2c">
+    <div style="min-width:0;flex:1"><h2>② PHÂN BỐ SCORE (mỗi KH tính riêng từng ngày) <i class="ic" data-i="dist">i</i></h2>
       <span class="card-sub" id="distSub"></span></div>
-    <div class="btn-row">
+    <div class="btn-row" style="flex:none">
       <span class="sub">Độ rộng bin</span>
       <select id="binW" onchange="render()">
         <option value="1" selected>1 điểm</option><option value="2">2 điểm</option>
@@ -1130,7 +1141,7 @@ body.dangmo{overflow:hidden}
       <span class="card-sub" id="matSub"></span></div>
     <div class="filt">
       <input type="text" id="qKB" placeholder="Tìm tên kịch bản…" oninput="renderMat()">
-      <span class="ndbox" title="Số ngày gần nhất muốn xem — gõ số rồi bấm Enter, hoặc dùng nút − +">
+      <span class="ndbox" id="matHopN" title="Số ngày gần nhất muốn xem — gõ số rồi bấm Enter, hoặc dùng nút − +">
         <span class="ndlab">Hiện</span>
         <button class="ndstep" onclick="stepNd(-1)">−</button>
         <input type="number" id="matNd" value="7" min="1" max="30" step="1"
@@ -1139,6 +1150,18 @@ body.dangmo{overflow:hidden}
         <span class="ndlab">ngày gần nhất</span>
         <button class="ndstep" onclick="stepNd(1)">+</button>
       </span>
+      <!-- Chọn KHOẢNG ngày bất kỳ. Ô "N ngày gần nhất" chỉ nhìn được phần
+           đuôi của kỳ; muốn soi một tuần giữa tháng 7 thì phải có hai mốc.
+           Hai cách dùng chung một bảng, bấm nút để đổi qua lại. -->
+      <span class="ndbox" id="matHopK" style="display:none"
+            title="Chọn khoảng ngày bất kỳ trong kỳ">
+        <span class="ndlab">Từ</span>
+        <input type="date" class="dmini" id="matTu" onchange="onKhoang()">
+        <span class="ndlab">đến</span>
+        <input type="date" class="dmini" id="matDen" onchange="onKhoang()">
+      </span>
+      <button id="matDoiCach" onclick="doiCachNgay()"
+        title="Đổi giữa 'N ngày gần nhất' và 'khoảng ngày tự chọn'">📅 Chọn khoảng</button>
       <button id="matGom" onclick="doiGom()"
         title="Xếp các kịch bản cùng nghiệp vụ đứng liền nhau">⊞ Gom theo nhóm</button>
     </div>
@@ -1442,7 +1465,10 @@ function setMode(m){
    CHỈ chốt giá trị khi bấm Enter hoặc rời ô, KHÔNG chốt theo từng ký tự gõ:
    nếu ép ngay lúc oninput thì xoá số 7 để gõ 5 sẽ hoá thành 15 rồi bị kẹp lại,
    không bao giờ nhập được số mình muốn. Ô đang để trống thì giữ nguyên bảng cũ. */
-function ndMax(){ return Math.min(30, D.tong.nd); }
+/* Trần 60 ngày chứ không phải 30: kỳ đã dài tới 63 ngày, ghim 30 thì gõ 60
+   cũng bị kéo về 30 mà không hiểu vì sao. Vẫn phải có trần — quá 60 cột thì
+   ô trong ma trận hẹp dưới 20px, số bên trong không đọc nổi. */
+function ndMax(){ return Math.min(60, D.tong.nd); }
 let ND_CUR = 7;                                  // số ngày đang thực sự hiển thị
 function onNd(){
   const raw = $('matNd').value.trim();
@@ -1455,6 +1481,44 @@ function onNd(){
   renderMat();
 }
 function stepNd(d){ $('matNd').value = (+$('matNd').value || ND_CUR) + d; onNd(); }
+
+/* ───────── ⑤ chọn KHOẢNG ngày ─────────
+   'cuoi' = N ngày gần nhất · 'khoang' = từ ngày A đến ngày B.
+   Giữ cả hai chứ không thay hẳn: nhịp dùng hằng ngày là xem đuôi kỳ, chỉ khi
+   điều tra lại mới cần soi một đoạn giữa. Đổi cách thì giữ nguyên đoạn đang
+   xem làm giá trị khởi đầu, khỏi phải gõ lại từ đầu. */
+let CACH_NGAY = 'cuoi';
+function doiCachNgay(){
+  CACH_NGAY = CACH_NGAY === 'cuoi' ? 'khoang' : 'cuoi';
+  const kh = CACH_NGAY === 'khoang';
+  $('matHopN').style.display = kh ? 'none' : '';
+  $('matHopK').style.display = kh ? '' : 'none';
+  $('matDoiCach').classList.toggle('on', kh);
+  $('matDoiCach').textContent = kh ? '↩ N ngày gần nhất' : '📅 Chọn khoảng';
+  if(kh && !$('matTu').value){
+    /* mở lần đầu: điền sẵn đúng đoạn ô "N ngày gần nhất" đang hiện */
+    const nd = Math.min(Math.max(1, ND_CUR), ndMax());
+    $('matTu').value  = D.days[Math.max(0, D.tong.nd - nd)];
+    $('matDen').value = D.days[D.tong.nd - 1];
+  }
+  renderMat();
+}
+function onKhoang(){
+  /* Người dùng gõ ngày ngoài kỳ hoặc ngày không có dữ liệu thì kéo về mốc
+     gần nhất CÓ dữ liệu, thay vì để bảng trống mà không nói vì sao. */
+  ['matTu','matDen'].forEach(id=>{
+    const v = $(id).value;
+    if(v && D.days.indexOf(v) < 0){
+      let gan = D.days[0], min = Infinity;
+      D.days.forEach(x=>{
+        const d = Math.abs(new Date(x) - new Date(v));
+        if(d < min){ min = d; gan = x; }
+      });
+      $(id).value = gan;
+    }
+  });
+  renderMat();
+}
 
 /* ───────── ⑥ số khách muốn xem ─────────
    Mặc định 20 cho gọn mắt; gõ số rồi Enter (hoặc rời ô) mới đổi, giống mục ⑤.
@@ -1914,17 +1978,24 @@ function renderDay(){
     return `<span class="${cuoiTuan(x.ngay)?'we':''}">${hien?dLab(x.ngay):''}</span>`;
   }).join('');
 
-  $('daySub').innerHTML = (nd < D.tong.nd
+  $('daySub').innerHTML = `Biểu đồ: ` + (nd < D.tong.nd
       ? `<b>${n}</b> ngày gần nhất (tổng kỳ có ${D.tong.nd} ngày)`
-      : `Toàn kỳ <b>${n}</b> ngày`) +
-    ` · đường gạch cam = trung bình <b>${fmt(Math.round(tbN))}</b> alert/ngày ·
-      cột cam = ngày cao nhất`;
+      : `toàn kỳ <b>${n}</b> ngày`) +
+    ` · gạch cam = TB <b>${fmt(Math.round(tbN))}</b> alert/ngày · cột cam = cao nhất
+      &nbsp;|&nbsp; Bảng: luôn <b>7 ngày gần nhất</b>`;
 
-  /* Bảng bên phải — mặc định mới nhất lên đầu, nhưng mọi cột đều bấm được để
-     sắp lại. Kỳ dài ra vài chục ngày thì câu "ngày nào nhiều khách mới nhất"
-     chỉ còn là một cú bấm, khỏi dò mắt. */
-  const hangNg = sxSap(NG.map(x=>({...x,
-      soTB: tbN ? x.alert/tbN : 0, apk: x.kh ? x.alert/x.kh : 0})),
+  /* Bảng bên phải LUÔN chỉ 7 ngày gần nhất, không chạy theo ô chọn của biểu
+     đồ. Hai thứ trả lời hai câu khác nhau: biểu đồ để nhìn HÌNH DẠNG cả tháng
+     (30-60 cột vẫn đọc được vì chỉ cần thấy cao thấp), còn bảng để ĐỌC SỐ
+     từng ngày — 30 dòng số thì phải cuộn, mà tuần này mới là cái cần xem.
+     Ngày cũ hơn vẫn xem được qua ô lịch ở thanh chọn ngày. */
+  const BANG_SO_NGAY = 7;
+  const NGB = nCuoi(D.ngay, BANG_SO_NGAY);
+  /* TB của riêng 7 ngày này — cột "So TB" phải so với đúng đoạn đang liệt kê,
+     không mượn tbN của biểu đồ (biểu đồ có thể đang xem 30 ngày). */
+  const tbB = NGB.reduce((a,x)=>a+x.alert,0)/NGB.length;
+  const hangNg = sxSap(NGB.map(x=>({...x,
+      soTB: tbB ? x.alert/tbB : 0, apk: x.kh ? x.alert/x.kh : 0})),
     'sxNgay', k => ({ngay:x=>x.ngay, alert:x=>x.alert, soTB:x=>x.soTB,
       kh:x=>x.kh, khMoi:x=>x.khMoi, kb:x=>x.kb, apk:x=>x.apk})[k]);
   $('dayTbl').innerHTML =
@@ -1934,7 +2005,7 @@ function renderDay(){
       ${thS('sxNgay','kb','KB nổ','w-num-s')}${thS('sxNgay','apk','Alert/KH','w-num-s')}
       </tr></thead><tbody>` +
     hangNg.map(x=>{
-      const rt = tbN ? x.alert/tbN : 0;
+      const rt = tbB ? x.alert/tbB : 0;
       const col = rt>=1.3?'var(--orange)': rt<=0.75?'var(--faint)':'var(--dim)';
       return `<tr><td class="l num">${dLab(x.ngay)}
           <span class="off" style="font-size:10px"> ${thu(x.ngay)}</span></td>
@@ -1945,14 +2016,21 @@ function renderDay(){
         <td class="num">${x.kb}<span class="mso">/${D.tong.kbCauHinh}</span></td>
         <td class="num">${(x.alert/x.kh).toFixed(2)}</td></tr>`;
     }).join('') +
+    /* Dòng chân: TB của ĐÚNG 7 ngày đang liệt kê. Trước đây cột "Khách" lấy
+       TB đoạn xem nhưng cột "KH mới" lại lấy tổng CẢ KỲ — hai phạm vi khác
+       nhau trên cùng một dòng, kỳ 7 ngày không lộ nhưng 63 ngày thì lệch hẳn.
+       Nay cả dòng cùng một phạm vi, và ghi rõ "7 NGÀY" để khỏi đọc nhầm
+       thành số của cả kỳ. */
     `<tr style="border-top:2px solid var(--border-hi)">
-       <td class="l"><b style="color:var(--faint)">TB / TỔNG</b></td>
-       <td class="num"><b>${fmt(Math.round(tbN))}</b></td>
+       <td class="l"><b style="color:var(--faint)">TB / TỔNG 7 NGÀY</b></td>
+       <td class="num"><b>${fmt(Math.round(tbB))}</b></td>
        <td class="num off">1.00×</td>
-       <td class="num">${fmt(Math.round(NG.reduce((a,x)=>a+x.kh,0)/n))}</td>
-       <td class="num"><b>${fmt(D.tong.kh)}</b></td>
-       <td class="num">${D.tong.kb}<span class="mso">/${D.tong.kbCauHinh}</span></td>
-       <td class="num">${(D.tong.alert/D.tong.kh).toFixed(2)}</td></tr></tbody>`;
+       <td class="num">${fmt(Math.round(NGB.reduce((a,x)=>a+x.kh,0)/NGB.length))}</td>
+       <td class="num"><b>${fmt(NGB.reduce((a,x)=>a+x.khMoi,0))}</b></td>
+       <td class="num">${Math.max(...NGB.map(x=>x.kb))}<span class="mso">/${
+           D.tong.kbCauHinh}</span></td>
+       <td class="num">${(NGB.reduce((a,x)=>a+x.alert,0) /
+           Math.max(1, NGB.reduce((a,x)=>a+x.kh,0))).toFixed(2)}</td></tr></tbody>`;
 }
 
 /* ───────── ④ nhóm nghiệp vụ (bảng) ─────────
@@ -2077,9 +2155,23 @@ function doiGom(){
    Đây là bước điều tra: thấy ngày lạ ở mục ③ → dóng xuống cột ngày đó,
    ô nào sáng bất thường so với các ô cùng dòng thì đó là kịch bản gây ra. */
 function renderMat(){
-  const nd = Math.min(Math.max(1, ND_CUR), ndMax());
-  const NGi = [];                                   // chỉ số ngày đang hiện
-  for(let i=Math.max(0,D.tong.nd-nd); i<D.tong.nd; i++) NGi.push(i);
+  /* Hai cách chọn ngày, dùng chung một bảng:
+       'cuoi'   — N ngày gần nhất (mặc định, hợp với nhịp đọc hằng ngày)
+       'khoang' — từ ngày A đến ngày B, để soi lại một đoạn giữa kỳ
+     NGi là danh sách CHỈ SỐ ngày đang hiện; mọi phần bên dưới chỉ đọc NGi
+     nên không phải sửa gì thêm. */
+  const NGi = [];
+  if(CACH_NGAY === 'khoang'){
+    const ia = D.days.indexOf($('matTu').value);
+    const ib = D.days.indexOf($('matDen').value);
+    if(ia >= 0 && ib >= 0){
+      for(let i=Math.min(ia,ib); i<=Math.max(ia,ib); i++) NGi.push(i);
+    }
+  }
+  if(!NGi.length){
+    const nd = Math.min(Math.max(1, ND_CUR), ndMax());
+    for(let i=Math.max(0,D.tong.nd-nd); i<D.tong.nd; i++) NGi.push(i);
+  }
   const n = NGi.length;
   const q = ($('qKB').value||'').toLowerCase();
 
@@ -2185,8 +2277,9 @@ function renderMat(){
      lấy số từng nổ thì gần như luôn ra 35/35, chẳng nói lên điều gì. */
   const kbCam = D.tong.kbCauHinh - D.kb.length;
   $('matSub').innerHTML =
-    `<b>${rows.length}</b>/${D.tong.kbCauHinh} kịch bản × <b>${n}</b> ngày gần nhất
-     (${dLab(D.days[NGi[0]])} – ${dLab(D.days[NGi[n-1]])})${
+    `<b>${rows.length}</b>/${D.tong.kbCauHinh} kịch bản × <b>${n}</b> ngày` +
+    (CACH_NGAY === 'khoang' ? '' : ' gần nhất') +
+    ` (${dLab(D.days[NGi[0]])} – ${dLab(D.days[NGi[n-1]])})${
        kbCam > 0 ? ` · <b>${kbCam}</b> rule chưa nổ lần nào cả kỳ nên không có dòng ở đây` : ''} ·
      ô càng sáng càng nhiều alert · viền cam = ngày đỉnh của chính kịch bản đó`;
   $('matNote').innerHTML =
@@ -2196,7 +2289,9 @@ function renderMat(){
      Rê chuột lên tên để xem mức và điểm gốc của kịch bản.
      Cột <b>Xu hướng</b> so nửa sau đoạn đang xem với nửa đầu — <b>▲ đỏ</b> là đang nóng lên.<br>
      <b>Bấm thẳng vào tên một cột ngày</b> để xếp kịch bản theo đúng ngày đó —
-     ngày lạ ở mục ③ thì bấm cột ngày đó, thủ phạm nhảy lên đầu bảng.`;
+     ngày lạ ở mục ③ thì bấm cột ngày đó, thủ phạm nhảy lên đầu bảng.<br>
+     Nút <b>📅 Chọn khoảng</b> để soi một đoạn bất kỳ giữa kỳ (ví dụ 21/07 – 30/07),
+     thay vì chỉ xem được phần đuôi.`;
 }
 
 /* ───────── ⑥ KH bị bắn nhiều alert ─────────
@@ -2532,6 +2627,10 @@ opNgay('dayNd', 30);      // mục ③ — mặc định 30 cột gần nhất
 $('matNd').max = ndMax();
 ND_CUR = Math.min(7, ndMax());
 $('matNd').value = ND_CUR;
+/* kẹp hai ô chọn khoảng trong đúng dải ngày của kỳ — lịch của trình duyệt
+   sẽ tự làm mờ ngày ngoài dải, khỏi phải chờ tới lúc onKhoang() sửa lại */
+$('matTu').min = $('matDen').min = D.days[0];
+$('matTu').max = $('matDen').max = D.days[D.tong.nd - 1];
 const opMoiNgay = `<option value="">Mọi ngày</option>` +
   D.days.slice().reverse().map(d=>
     `<option value="${d}">${dLab(d)} ${thu(d)}</option>`).join('');
@@ -2602,7 +2701,7 @@ function trangThaiDT(j){
    Kỳ 7 ngày thì rải hết chip là đẹp nhất. Nhưng đổ thêm dữ liệu vào là kỳ
    dài ra, 100 ngày mà rải chip thì thanh này thành bức tường. Nên: chỉ rải
    CHIP_TOI_DA ngày gần nhất, phần cũ hơn đi qua ô lịch ngay bên cạnh. */
-const CHIP_TOI_DA = 12;
+const CHIP_TOI_DA = 7;
 function renderNgayBar(){
   const mn = D.days.length - 1;
   const tu = Math.max(0, D.days.length - CHIP_TOI_DA);

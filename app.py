@@ -11,7 +11,6 @@ JavaScript trong trình duyệt). App này chỉ làm 3 việc:
 Chạy tại máy:   streamlit run app.py
 """
 import os
-import base64
 import subprocess
 import sys
 import tempfile
@@ -114,12 +113,21 @@ def nhung(html):
     dùng cuộn mỏi tay mới thấy. Cho iframe đúng bằng màn hình thì dashboard
     tự cuộn bên trong và nút nằm đúng góc phải dưới như bản HTML.
 
-    Dùng data: URL thay vì components.html() để tránh Streamlit bọc thêm một
-    lớp iframe nữa — hai lớp lồng nhau làm thanh cuộn trong ngoài đá nhau.
+    Dùng srcdoc chứ KHÔNG dùng components.html() (Streamlit bọc thêm một lớp
+    iframe nữa, hai lớp lồng nhau làm thanh cuộn trong ngoài đá nhau) và cũng
+    KHÔNG dùng data: URL nữa.
+
+    Vì sao bỏ data: URL — đã trả giá: Chrome chặn data: URL quá ~2 MB. Kỳ 7
+    ngày thì HTML chỉ 520 KB nên chạy tốt, nhưng kỳ 67 ngày làm HTML lên
+    4,96 MB, base64 thành 6,63 MB → trình duyệt lặng lẽ từ chối tải, iframe
+    TRẮNG TRƠN mà không báo lỗi gì. srcdoc không có giới hạn kích thước.
     """
-    b64 = base64.b64encode(html.encode("utf-8")).decode("ascii")
+    # srcdoc nằm trong thuộc tính HTML nên phải escape " & < >, nếu không một
+    # dấu nháy kép trong dashboard sẽ cắt đứt thuộc tính giữa chừng.
+    an = (html.replace("&", "&amp;").replace('"', "&quot;")
+              .replace("<", "&lt;").replace(">", "&gt;"))
     st.markdown(
-        f'<iframe src="data:text/html;base64,{b64}" '
+        f'<iframe srcdoc="{an}" '
         f'style="width:100%;height:calc(100vh - 3.2rem);border:0;display:block" '
         f'sandbox="allow-scripts allow-same-origin allow-popups"></iframe>',
         unsafe_allow_html=True)

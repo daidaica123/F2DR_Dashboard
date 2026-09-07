@@ -10,6 +10,7 @@ JavaScript trong trình duyệt). App này chỉ làm 3 việc:
 
 Chạy tại máy:   streamlit run app.py
 """
+import hashlib
 import os
 import subprocess
 import sys
@@ -22,6 +23,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 HTML = os.path.join(HERE, "F2DR_Van_Hanh.html")
 BUILD = os.path.join(HERE, "_build", "build_van_hanh.py")
 DATA = os.path.join(HERE, "data")
+# Thư mục Streamlit phục vụ qua HTTP (cần enableStaticServing trong config).
+# File dựng ra lúc chạy, KHÔNG commit — xem .gitignore.
+STATIC = os.path.join(HERE, "static")
 
 # _build không phải package (không có __init__.py) nên phải thêm vào đường
 # tìm module. Lấy hàm ghep() từ đó thay vì chép lại — chép lại là mở đường
@@ -107,27 +111,45 @@ def khoa_api():
 def nhung(html):
     """Nhúng dashboard (đã kèm trợ lý) vào trang, chiếm trọn chiều cao màn hình.
 
-    Chiều cao phải là 100vh chứ KHÔNG phải một số pixel cố định. Nút chat
-    dùng position:fixed, mà mốc của position:fixed là khung nhìn của chính
-    iframe — iframe cao 3400px thì nút rơi xuống tận đáy 3400px đó, người
-    dùng cuộn mỏi tay mới thấy. Cho iframe đúng bằng màn hình thì dashboard
-    tự cuộn bên trong và nút nằm đúng góc phải dưới như bản HTML.
+    Cách làm: ghi file vào static/ rồi cho iframe TẢI QUA HTTP, thay vì nhét
+    cả 6 MB HTML vào một thuộc tính.
 
-    Dùng srcdoc chứ KHÔNG dùng components.html() (Streamlit bọc thêm một lớp
-    iframe nữa, hai lớp lồng nhau làm thanh cuộn trong ngoài đá nhau) và cũng
-    KHÔNG dùng data: URL nữa.
+    Vì sao phải làm vậy — đã trả giá HAI lần với cùng một nguyên nhân gốc là
+    dashboard quá lớn (biến D chiếm 4,79 MB, tức 97% file):
+      · data: URL  — Chrome chặn quá ~2 MB. base64 làm 5,11 MB thành 6,85 MB.
+      · srcdoc     — không có giới hạn cứng, nhưng escape làm phồng thêm 28%
+                     (5,11 -> 6,54 MB), và Streamlit còn bọc thêm một lớp
+                     iframe nữa. Mở file thẳng bằng Chrome thì được, nhưng
+                     trong Streamlit vẫn trắng.
+    Tải qua HTTP thì kích thước không còn là vấn đề — trình duyệt xử lý nó
+    như một trang web bình thường, có cả streaming và cache.
 
-    Vì sao bỏ data: URL — đã trả giá: Chrome chặn data: URL quá ~2 MB. Kỳ 7
-    ngày thì HTML chỉ 520 KB nên chạy tốt, nhưng kỳ 67 ngày làm HTML lên
-    4,96 MB, base64 thành 6,63 MB → trình duyệt lặng lẽ từ chối tải, iframe
-    TRẮNG TRƠN mà không báo lỗi gì. srcdoc không có giới hạn kích thước.
+    Chiều cao phải là 100vh chứ KHÔNG phải số pixel cố định: nút chat dùng
+    position:fixed, mốc là khung nhìn của chính iframe.
     """
-    # srcdoc nằm trong thuộc tính HTML nên phải escape " & < >, nếu không một
-    # dấu nháy kép trong dashboard sẽ cắt đứt thuộc tính giữa chừng.
-    an = (html.replace("&", "&amp;").replace('"', "&quot;")
-              .replace("<", "&lt;").replace(">", "&gt;"))
+    os.makedirs(STATIC, exist_ok=True)
+    # Dọn file của các phiên trước, giữ lại file mới nhất phòng khi có tab
+    # khác đang mở. Không dọn thì static/ phình lên vài chục MB sau một ngày.
+    cu = sorted((os.path.getmtime(os.path.join(STATIC, f)), f)
+                for f in os.listdir(STATIC) if f.startswith("dash_"))
+    for _, f in cu[:-1]:
+        try:
+            os.remove(os.path.join(STATIC, f))
+        except OSError:
+            pass
+
+    # Tên có mã băm nội dung: nội dung đổi thì tên đổi, trình duyệt không
+    # dùng lại bản cache cũ. Đồng thời tên khó đoán nên người ngoài không
+    # dò ra file (file này có khoá API của trợ lý).
+    ma = hashlib.sha256(html.encode("utf-8")).hexdigest()[:16]
+    ten = "dash_%s.html" % ma
+    p = os.path.join(STATIC, ten)
+    if not os.path.exists(p):
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(html)
+
     st.markdown(
-        f'<iframe srcdoc="{an}" '
+        f'<iframe src="app/static/{ten}" '
         f'style="width:100%;height:calc(100vh - 3.2rem);border:0;display:block" '
         f'sandbox="allow-scripts allow-same-origin allow-popups"></iframe>',
         unsafe_allow_html=True)

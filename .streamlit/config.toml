@@ -1,5 +1,9 @@
 [server]
 headless = true
+# Phục vụ file tĩnh trong thư mục static/ qua đường dẫn app/static/<tên>.
+# Cần cho việc nhúng dashboard: file 5 MB mà nhét vào thuộc tính srcdoc thì
+# trình duyệt không tải nổi, phải để nó tải bằng HTTP như một trang bình thường.
+enableStaticServing = true
 
 [browser]
 gatherUsageStats = false

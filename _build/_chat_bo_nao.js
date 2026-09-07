@@ -33,6 +33,46 @@ window.F2BoNao = (function () {
 
   function khoa() { return dsKhoa()[0] || ""; }
 
+  /* ───────── chế độ proxy (Cloudflare Pages) ─────────
+     Trang tĩnh thì không thể giữ khoá: nhét vào HTML là ai cũng đọc được.
+     Bản Pages khai proxy + số lượng khoá máy chủ đang giữ; trang chỉ gửi
+     SỐ THỨ TỰ khoá, không bao giờ thấy khoá thật. */
+  function diaChiProxy() {
+    return (window.F2_CAU_HINH && window.F2_CAU_HINH.proxy) || "";
+  }
+  /* Số khoá máy chủ đang giữ.
+
+     Con số dựng sẵn lúc build chỉ là ước lượng — đổi khoá bên Cloudflare
+     là nó sai ngay, mà sai thì bot dò tới khoá không tồn tại rồi báo hết
+     lượt oan. Nên hỏi thẳng máy chủ một lần rồi nhớ lại. */
+  var SO_KHOA_THAT = null;
+
+  function soKhoaProxy() {
+    if (SO_KHOA_THAT !== null) return SO_KHOA_THAT;
+    var n = window.F2_CAU_HINH && window.F2_CAU_HINH.soKhoa;
+    return typeof n === "number" && n > 0 ? n : 0;
+  }
+
+  function hoiSoKhoa() {
+    if (SO_KHOA_THAT !== null || !diaChiProxy()) return Promise.resolve();
+    return fetch(diaChiProxy())
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && typeof j.so_khoa === "number" && j.so_khoa > 0) {
+          SO_KHOA_THAT = j.so_khoa;
+        }
+      })
+      .catch(function () { /* hỏi không được thì dùng số dựng sẵn */ });
+  }
+
+  function dungProxy() { return !dsKhoa().length && !!diaChiProxy(); }
+
+  /* Số "khoá" dùng được, tính chung cho cả hai chế độ. Phần xoay khoá bên
+     dưới chỉ cần biết CÓ MẤY khoá để duyệt, không cần biết nội dung. */
+  function soKhoa() {
+    return dungProxy() ? soKhoaProxy() : dsKhoa().length;
+  }
+
   /* ══════════════════ CHẶN THÔNG TIN NHÂN THÂN ══════════════════
      Bản đối chiếu của chan_pii.py. Chạy bằng luật chứ không qua model, nên
      không thể bị thuyết phục hay đánh lừa bằng cách diễn đạt vòng vo. */
@@ -559,11 +599,30 @@ window.F2BoNao = (function () {
     var dongHo = setTimeout(function () { if (ngat) ngat.abort(); },
                             HAN_GIAY * 1000);
 
-    return fetch("https://generativelanguage.googleapis.com/v1beta/models/" +
-                 model + ":generateContent?key=" + encodeURIComponent(k), {
+    /* Hai đường gọi, cùng một thân yêu cầu:
+
+       · Có khoá trong trang (bản HTML mở bằng trình duyệt, bản Streamlit
+         ghép khoá lúc chạy) -> gọi thẳng Gemini như trước.
+       · Không có khoá, mà trang khai proxy (bản Cloudflare Pages) -> gửi
+         SỐ THỨ TỰ khoá cho hàm trung gian, khoá thật nằm ở phía máy chủ.
+
+       Gửi số thứ tự chứ không phải khoá là điểm mấu chốt: cơ chế xoay
+       khoá bên dưới vẫn nhớ được "khoá 3 + model X hết lượt" và tự né,
+       trong khi trình duyệt không bao giờ thấy khoá thật. */
+    var duong, thanGui;
+    if (k) {
+      duong = "https://generativelanguage.googleapis.com/v1beta/models/" +
+              model + ":generateContent?key=" + encodeURIComponent(k);
+      thanGui = than;
+    } else {
+      duong = diaChiProxy();
+      thanGui = { model: model, khoa: opt._iKhoa || 0, than: than };
+    }
+
+    return fetch(duong, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(than),
+      body: JSON.stringify(thanGui),
       signal: ngat ? ngat.signal : undefined
     }).then(function (r) {
       clearTimeout(dongHo);
@@ -625,22 +684,35 @@ window.F2BoNao = (function () {
      hạn mức. Với 5 khoá x 5 model dùng được, sức chứa là ~500 lượt/ngày,
      tức khoảng 125-250 câu hỏi. */
   function goiLLM(prompt, opt) {
+    /* Chế độ proxy: hỏi máy chủ xem đang giữ mấy khoá trước đã, không thì
+       dò theo con số dựng sẵn có thể đã cũ. Chỉ tốn một lượt cho cả phiên. */
+    if (dungProxy() && SO_KHOA_THAT === null) {
+      return hoiSoKhoa().then(function () { return _goiLLM(prompt, opt); });
+    }
+    return _goiLLM(prompt, opt);
+  }
+
+  function _goiLLM(prompt, opt) {
     opt = opt || {};
     var ks = dsKhoa();
-    if (!ks.length) return Promise.reject(new Error(
-      "Chưa có khoá API. Dựng lại: py -3.13 _build/xem_truoc.py --khoa \"...\""));
+    var nK = soKhoa();            // khoá trong trang, hoặc khoá máy chủ giữ hộ
+    if (!nK) return Promise.reject(new Error(
+      dungProxy()
+        ? "Máy chủ chưa được đặt khoá Gemini. Vào Cloudflare → Settings → " +
+          "Environment variables, thêm GEMINI_API_KEYS."
+        : "Chưa có khoá API. Dựng lại: py -3.13 _build/xem_truoc.py --khoa \"...\""));
 
     var dsModel = [MODEL].concat(MODEL_DU_PHONG);
     var cap = [];                 // mọi cặp (khoá, model) theo thứ tự ưu tiên
     for (var im = 0; im < dsModel.length; im++) {
-      for (var ik = 0; ik < ks.length; ik++) {
+      for (var ik = 0; ik < nK; ik++) {
         if (!DA_CAN[tenCan(ik, dsModel[im])]) cap.push([ik, dsModel[im]]);
       }
     }
     if (!cap.length) {            // phiên này đã cạn sạch -> thử lại từ đầu
       DA_CAN = {};
       for (im = 0; im < dsModel.length; im++)
-        for (ik = 0; ik < ks.length; ik++) cap.push([ik, dsModel[im]]);
+        for (ik = 0; ik < nK; ik++) cap.push([ik, dsModel[im]]);
     }
 
     var loiCuoi = null;
@@ -648,7 +720,7 @@ window.F2BoNao = (function () {
     function thu(i, lan) {
       if (i >= cap.length) {
         return Promise.reject(new Error(
-          "Đã hết hạn mức trên cả " + ks.length + " khoá x " +
+          "Đã hết hạn mức trên cả " + nK + " khoá x " +
           dsModel.length + " model.\n\n" +
           "Bậc miễn phí cho **20 lượt mỗi NGÀY** cho mỗi cặp (khoá, model), " +
           "mà một câu hỏi tốn 2–4 lượt. Hạn mức đặt lại vào nửa đêm giờ " +
@@ -656,10 +728,17 @@ window.F2BoNao = (function () {
       }
       var iK = cap[i][0], model = cap[i][1];
       if (i > 0) {
-        ghiLogChung("Đổi sang khoá " + (iK + 1) + "/" + ks.length +
-                    " · " + model);
+        ghiLogChung("Đổi sang khoá " + (iK + 1) + "/" + nK + " · " + model);
       }
-      return _motLan(prompt, opt, model, ks[iK]).catch(function (e) {
+      /* Chế độ proxy: khoá thật nằm ở máy chủ, chỉ gửi số thứ tự đi.
+         Truyền qua opt vì _motLan nhận khoá ở tham số cuối. */
+      var optGoi = opt;
+      if (dungProxy()) {
+        optGoi = {};
+        for (var t in opt) if (opt.hasOwnProperty(t)) optGoi[t] = opt[t];
+        optGoi._iKhoa = iK;
+      }
+      return _motLan(prompt, optGoi, model, ks[iK]).catch(function (e) {
         loiCuoi = e;
         if (!loiTamThoi(e)) throw e;          // lỗi thật thì báo ngay
 
@@ -1052,8 +1131,32 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
             hongLienTiep = 0;
           } catch (e) {
             hongLienTiep++;
-            var loi = { _mo_ta: "Bước này không chạy được", _loi: e.message,
-                        _huong_dan: "Đổi cách khác hoặc dừng lại nếu đã đủ." };
+            /* Báo lỗi trống rỗng thì model chỉ biết gọi lại y hệt rồi hỏng
+               tiếp. Nói rõ SAI Ở ĐÂU và gợi tên hàm gần đúng — sai tên hàm
+               và sai tên tham số là hai lỗi phổ biến nhất. */
+            var goiY = "";
+            try {
+              var dsH = TT.danhSachHam || [];
+              if (dsH.indexOf(qd.ham) < 0) {
+                var gan = dsH.filter(function (t) {
+                  var a = t.split("_"), b = String(qd.ham || "").split("_");
+                  return a.some(function (x) { return b.indexOf(x) >= 0; });
+                }).slice(0, 4);
+                goiY = "Hàm '" + qd.ham + "' KHÔNG tồn tại." +
+                  (gan.length ? " Có thể bạn định gọi: " + gan.join(", ") + "."
+                              : " Xem lại danh sách hàm được phép.");
+              } else {
+                goiY = "Hàm có thật nhưng tham số không hợp. Xem lại mô tả " +
+                       "của '" + qd.ham + "' để biết nó nhận tham số nào.";
+              }
+            } catch (e2) { /* gợi ý hỏng thì vẫn báo lỗi gốc */ }
+
+            var loi = { _mo_ta: "Bước này không chạy được",
+                        _loi: e.message,
+                        _sai_o_dau: goiY,
+                        _huong_dan: "Sửa lại lời gọi theo gợi ý trên rồi thử " +
+                          "MỘT lần nữa. Nếu vẫn không được thì trả lời bằng " +
+                          "dữ kiện đã có, đừng lặp lại lời gọi y hệt." };
             R.cacBuoc.push({ moTa: "bước thất bại", ketQua: loi });
             R.duKien.push(loi);
             ghiLog("   lỗi: " + e.message.slice(0, 80));
@@ -1267,6 +1370,10 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
 
   return { hoi: hoi, tachGoiY: tachGoiY, kiemCauHoi: kiemCauHoi,
            thuPhepTinh: hoiPhepTinh, thuXaGiao: xaGiao,
-           kiemSo: kiemSo, quetDauRa: quetDauRa, coKhoa: function () {
-             return !!khoa(); } };
+           kiemSo: kiemSo, quetDauRa: quetDauRa,
+           /* Có khoá dùng được không — tính cả chế độ proxy, nơi khoá nằm
+              ở máy chủ chứ không trong trang. Chỉ đếm khoá trong trang thì
+              bản Pages luôn bị báo "chưa có khoá" dù chat chạy tốt. */
+           coKhoa: function () { return !!khoa() || dungProxy(); },
+           hoiSoKhoa: hoiSoKhoa };
 })();

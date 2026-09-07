@@ -347,6 +347,30 @@ tbody tr:hover .nhbar i{opacity:1}
 .heat td.nm span.nm2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .heat td.nm .mk{flex:none}
 .heat tbody tr:hover td.nm{color:var(--accent)}
+/* Thu gọn cột ngày: bảng chỉ còn tên + Σ + xu hướng. Bỏ max-width:0 để tên
+   kịch bản duỗi hết cỡ — giấu 67 cột ngày mà vẫn cắt tên thì phí chỗ.
+   Σ to lên vì lúc này nó là thứ duy nhất người ta nhìn. */
+.heat.gon-ngay td.nm{max-width:none;padding-left:4px}
+.heat.gon-ngay td.nm span.nm2{white-space:normal;overflow:visible}
+.heat.gon-ngay tfoot td{font-size:12px}
+.heat.gon-ngay tbody td.c{font-size:12px}
+/* Các cột chỉ có khi thu gọn: lấp chỗ trống bằng thứ đọc được ngay thay vì
+   để trắng cả nghìn pixel giữa tên và Σ. */
+.heat th.gon-h{text-align:left;font-size:9px;color:var(--faint);font-weight:600;
+               padding:0 8px 4px;background:none;position:static;
+               letter-spacing:.04em;white-space:nowrap}
+.heat th.gon-h.n{text-align:right}
+.heat td.gon-b{padding:0 8px;border:0;vertical-align:middle}
+.heat span.gonbar{display:block;height:7px;border-radius:4px;
+  background:linear-gradient(90deg,rgba(46,232,255,.85),rgba(46,232,255,.3));
+  min-width:2px}
+.heat td.gon-n{text-align:right;font-family:var(--mono);font-size:11px;
+               color:var(--dim);padding:0 8px;border:0;white-space:nowrap}
+.heat td.gon-d{color:var(--faint)}
+.heat span.gon-m{color:var(--faint);font-size:9.5px}
+.heat tbody tr:hover span.gonbar{background:linear-gradient(90deg,
+  var(--orange),rgba(255,149,80,.35))}
+.heat tfoot td.gon-n{color:var(--text)}
 /* dòng ngăn nhóm nghiệp vụ — chỉ hiện khi sắp theo nhóm */
 .heat tr.grp td{background:none;border:0;padding:9px 2px 3px;font-size:10.5px;
                 font-weight:700;color:var(--accent);letter-spacing:.3px;
@@ -1155,6 +1179,12 @@ body.dangmo{overflow:hidden}
            Hai cách dùng chung một bảng, bấm nút để đổi qua lại. -->
       <span class="ndbox" id="matHopK" style="display:none"
             title="Chọn khoảng ngày bất kỳ trong kỳ">
+        <!-- Chọn nhanh: gõ tay hai mốc để lấy trọn một tháng thì vừa lâu vừa
+             dễ sai ngày cuối tháng. Danh sách này điền sẵn hai mốc đúng. -->
+        <select class="dmini" id="matNhanh" onchange="chonNhanh()"
+                title="Chọn nhanh trọn một tháng hoặc toàn bộ kỳ">
+          <option value="">— chọn nhanh —</option>
+        </select>
         <span class="ndlab">Từ</span>
         <input type="date" class="dmini" id="matTu" onchange="onKhoang()">
         <span class="ndlab">đến</span>
@@ -1162,6 +1192,11 @@ body.dangmo{overflow:hidden}
       </span>
       <button id="matDoiCach" onclick="doiCachNgay()"
         title="Đổi giữa 'N ngày gần nhất' và 'khoảng ngày tự chọn'">📅 Chọn khoảng</button>
+      <!-- Xem tổng cả kỳ thì 67 cột ngày chỉ tổ phải cuộn ngang, trong khi
+           thứ cần nhìn chỉ là cột Σ. Nút này giấu hết cột ngày, giữ nguyên
+           phạm vi đang chọn nên Σ vẫn là tổng của đúng đoạn đó. -->
+      <button id="matThuGon" onclick="doiThuGon()"
+        title="Ẩn các cột ngày, chỉ xem tổng — hợp khi chọn khoảng dài">⇔ Thu gọn ngày</button>
       <button id="matGom" onclick="doiGom()"
         title="Xếp các kịch bản cùng nghiệp vụ đứng liền nhau">⊞ Gom theo nhóm</button>
     </div>
@@ -1517,6 +1552,65 @@ function onKhoang(){
       $(id).value = gan;
     }
   });
+  /* Gõ tay hai mốc thì không còn khớp mục vừa chọn trong danh sách nhanh. */
+  $('matNhanh').value = '';
+  renderMat();
+}
+
+/* ───────── ⑤ chọn nhanh: trọn tháng / toàn kỳ ─────────
+   Dựng từ chính D.days nên chỉ hiện tháng CÓ dữ liệu, và mốc cuối là ngày
+   cuối cùng có thật của tháng đó — không phải 30/31 theo lịch, vì tháng
+   đang chạy dở thì dữ liệu dừng giữa chừng. */
+function dungChonNhanh(){
+  const s = $('matNhanh');
+  if(!s) return;
+  const thang = [];              // [{ma:'2026-08', tu, den}]
+  D.days.forEach(d=>{
+    const ma = d.slice(0,7);
+    const c = thang.find(x=>x.ma===ma);
+    if(c) c.den = d; else thang.push({ma, tu:d, den:d});
+  });
+  const ten = m => {
+    const [y,t] = m.split('-');
+    return `Tháng ${+t}/${y}`;
+  };
+  s.innerHTML = '<option value="">— chọn nhanh —</option>'
+    + `<option value="all">Toàn bộ ${D.tong.nd} ngày</option>`
+    + thang.map(x=>{
+        const sn = D.days.filter(d=>d.slice(0,7)===x.ma).length;
+        return `<option value="${x.tu}|${x.den}">${ten(x.ma)} (${sn} ngày)</option>`;
+      }).join('');
+}
+
+function chonNhanh(){
+  const v = $('matNhanh').value;
+  if(!v) return;
+  if(v === 'all'){
+    $('matTu').value  = D.days[0];
+    $('matDen').value = D.days[D.tong.nd - 1];
+  } else {
+    const [a,b] = v.split('|');
+    $('matTu').value = a; $('matDen').value = b;
+  }
+  /* Khoảng dài thì cột ngày nhiều tới mức không đọc nổi — tự thu gọn luôn,
+     người dùng chọn "toàn bộ 67 ngày" là để xem TỔNG chứ không phải để
+     cuộn ngang 67 cột. Vẫn mở lại được bằng nút. */
+  const soNgay = D.days.indexOf($('matDen').value) - D.days.indexOf($('matTu').value) + 1;
+  if(soNgay > 31 && !THU_GON) doiThuGon(); else renderMat();
+}
+
+/* ───────── ⑤ thu gọn cột ngày ─────────
+   Chọn cả kỳ thì bảng có 67 cột ngày, phải cuộn ngang mãi mới tới cột Σ —
+   trong khi thứ cần xem chỉ là Σ. Nút này giấu cột ngày, giữ nguyên phạm
+   vi đang chọn nên Σ vẫn đúng là tổng của đoạn đó. */
+let THU_GON = false;
+function doiThuGon(){
+  THU_GON = !THU_GON;
+  const b = $('matThuGon');
+  b.classList.toggle('on', THU_GON);
+  b.textContent = THU_GON ? '⇔ Hiện lại ngày' : '⇔ Thu gọn ngày';
+  b.title = THU_GON ? 'Hiện lại các cột ngày'
+                    : 'Ẩn các cột ngày, chỉ xem tổng — hợp khi chọn khoảng dài';
   renderMat();
 }
 
@@ -1647,6 +1741,7 @@ function render(){
         ` — đặt vạch vào giữa khe thì ngưỡng ổn định, xê dịch vài điểm không đổi kết quả.`
       : 'Phân bố liền mạch, không có khe trống rõ rệt.');
 
+  dungChonNhanh();          // danh sách tháng dựng từ D.days, phải có trước renderMat
   renderDay(); renderNhom(); renderMat(); renderTopKH(); renderGC();
   renderFx(); renderWarn(); foldSum();
 }
@@ -2174,6 +2269,10 @@ function renderMat(){
   }
   const n = NGi.length;
   const q = ($('qKB').value||'').toLowerCase();
+  /* Thu gọn: vẫn tính trên ĐỦ NGi (Σ và xu hướng phải đúng), chỉ không vẽ
+     cột ngày ra. Tách riêng danh sách cột để vẽ, phần tính không đụng tới. */
+  const NGv = THU_GON ? [] : NGi;
+  const nv = NGv.length;
 
   /* alert trong ĐÚNG đoạn ngày đang xem, không lấy tổng cả kỳ */
   let rows = D.kb.filter(k => !q || k.ten.toLowerCase().includes(q))
@@ -2216,7 +2315,9 @@ function renderMat(){
   /* tổng theo cột + cột nào là ngày cao nhất */
   const cot = NGi.map((_,j)=> rows.reduce((a,k)=>a+k.vv[j],0));
   const jMx = cot.indexOf(Math.max(...cot));
-  const dw  = `calc((100% - 320px - 96px - ${(n+2)*2}px) / ${n})`;
+  /* Thu gọn thì không có cột ngày nào, phép chia cho 0 ra Infinity làm vỡ
+     bảng — chỉ tính bề ngang cột khi thật sự có cột để vẽ. */
+  const dw  = nv ? `calc((100% - 320px - 96px - ${(nv+2)*2}px) / ${nv})` : '0';
 
   const o = (v) => v ? (0.13 + 0.87*Math.sqrt(v/mx)) : 0;
   const cell = (v, la) => v
@@ -2224,12 +2325,48 @@ function renderMat(){
          color:${o(v)>0.5?'#04121e':'var(--dim)'}">${v}</td>`
     : `<td class="c" style="background:#0a1020;color:#2a3f6b">·</td>`;
 
-  $('matBox').innerHTML = `<table class="heat">
-    <colgroup><col style="width:320px">${NGi.map(()=>
-      `<col class="dcol" style="width:${dw}">`).join('')}<col style="width:64px">
+  /* ── ô thay cho cột ngày khi THU GỌN ──
+     Giấu 67 cột ngày thì thừa ra cả nghìn pixel giữa tên và Σ. Lấp bằng
+     thứ đọc được ngay, không phải nhẩm:
+       Tỉ trọng   — thanh ngang, thấy liền kịch bản nào chiếm phần lớn
+       % tổng     — con số của chính thanh đó
+       Ngày nổ    — nổ rải đều hay dồn một hai ngày (rất khác nhau về bản chất)
+       TB/ngày nổ — chia cho số ngày CÓ nổ, không chia cho cả kỳ: kịch bản
+                    chỉ nổ 2/67 ngày mà chia 67 thì ra số vô nghĩa
+       Ngày đỉnh  — dồn vào ngày nào, dóng thẳng sang mục ③ */
+  const tongBang = rows.reduce((a,k)=>a+k.tong,0) || 1;
+  function oGon(k){
+    const pc   = k.tong / tongBang * 100;
+    const soNg = k.vv.filter(v=>v>0).length;
+    const tb   = soNg ? k.tong / soNg : 0;
+    const jD   = k.vv.indexOf(k.dinh2);
+    /* Thanh so với kịch bản nặng nhất chứ không so với tổng: so với tổng
+       thì mọi thanh đều tí xíu vì không cái nào chiếm quá 16%. */
+    const w = Math.max(1.5, k.tong / rows[0].tong * 100);
+    return `<td class="gon-b"><span class="gonbar" style="width:${w.toFixed(1)}%"></span></td>
+      <td class="gon-n">${pc >= 0.05 ? pc.toFixed(1)+'%' : '·'}</td>
+      <td class="gon-n">${soNg}<span class="gon-m">/${n}</span></td>
+      <td class="gon-n">${soNg ? fmt(Math.round(tb)) : '·'}</td>
+      <td class="gon-n gon-d">${k.dinh2 ? dLab(D.days[NGi[jD]])
+          + '<span class="gon-m"> · '+fmt(k.dinh2)+'</span>' : '·'}</td>`;
+  }
+
+  $('matBox').innerHTML = `<table class="heat${THU_GON?' gon-ngay':''}">
+    <colgroup><col style="width:${THU_GON?'34%':'320px'}">${
+      THU_GON ? `<col style="width:auto"><col style="width:66px">
+                 <col style="width:78px"><col style="width:88px">
+                 <col style="width:108px">` : ''}${NGv.map(()=>
+      `<col class="dcol" style="width:${dw}">`).join('')}<col style="width:${
+        THU_GON?'96px':'64px'}">
       <col style="width:96px"></colgroup>
     <thead><tr>${thS('sxMat','ten','Kịch bản','l',1,'background:none;position:static')}
-      ${NGi.map((i,j)=>{
+      ${THU_GON ? `
+        <th class="gon-h">Tỉ trọng</th>
+        <th class="gon-h n">% tổng</th>
+        <th class="gon-h n">Ngày nổ</th>
+        <th class="gon-h n">TB/ngày nổ</th>
+        <th class="gon-h n">Ngày đỉnh</th>` : ''}
+      ${NGv.map((i,j)=>{
         const on = (SX['sxMat']||{}).k === 'd'+i;
         return `<th class="sx gon d${cuoiTuan(D.days[i])?' we':''}${j===jMx?' hot':''}${
           on?' on':''}" data-d="${on?((SX['sxMat'].d>0)?'asc':'desc'):''}"
@@ -2254,13 +2391,14 @@ function renderMat(){
               >${esc(nhomNgan(k.nhom) || '(chưa phân nhóm)')}
               <span class="gn">${cua.length}${nhO && nhO.kbTong
                 ? '/'+nhO.kbTong : ''} kịch bản</span></td>
-            <td colspan="${n}"></td><td class="c">${fmt(tongNhom)}</td>
+            <td colspan="${nv || 5}"></td><td class="c">${fmt(tongNhom)}</td>
             <td></td></tr>`;
         }
         return dau + `<tr><td class="nm" title="${esc(k.ten)} — ${k.lv}, ${k.sc} điểm${
               k.nhom?' · '+esc(k.nhom):''}">
             <div><span class="nm2">${esc(k.ten)}</span></div></td>` +
-          k.vv.map((v,j)=>cell(v, v===k.dinh2 && v>=20 && k.dinh2 >= k.tong/n*2)).join('') +
+          (THU_GON ? oGon(k) :
+            k.vv.map((v,j)=>cell(v, v===k.dinh2 && v>=20 && k.dinh2 >= k.tong/n*2)).join('')) +
           `<td class="c" style="background:none;color:var(--text);font-weight:700">
              ${fmt(k.tong)}</td>` +
           /* Kịch bản quá ít alert thì % xu hướng nhảy loạn, để trống cho sạch */
@@ -2268,8 +2406,14 @@ function renderMat(){
              k.tong >= 20 ? nhanXu(xuHuong(k.vv)) : ''}</td></tr>`;
       }).join('');
     })() +
-    `</tbody><tfoot><tr><td class="l">TỔNG THEO NGÀY</td>` +
-      cot.map((v,j)=>`<td${j===jMx?' style="color:var(--orange)"':''}>${fmt(v)}</td>`).join('') +
+    `</tbody><tfoot><tr><td class="l">${THU_GON?'TỔNG':'TỔNG THEO NGÀY'}</td>` +
+      (THU_GON
+        ? `<td></td><td class="gon-n">100%</td>
+           <td class="gon-n">${n}<span class="gon-m"> ngày</span></td>
+           <td class="gon-n">${fmt(Math.round(cot.reduce((a,b)=>a+b,0)/n))}</td>
+           <td class="gon-n gon-d">${dLab(D.days[NGi[jMx]])
+             }<span class="gon-m"> · ${fmt(cot[jMx])}</span></td>`
+        : cot.map((v,j)=>`<td${j===jMx?' style="color:var(--orange)"':''}>${fmt(v)}</td>`).join('')) +
       `<td>${fmt(cot.reduce((a,b)=>a+b,0))}</td>
        <td class="xuhuong">${nhanXu(xuHuong(cot))}</td></tr></tfoot></table>`;
 
@@ -2280,8 +2424,10 @@ function renderMat(){
     `<b>${rows.length}</b>/${D.tong.kbCauHinh} kịch bản × <b>${n}</b> ngày` +
     (CACH_NGAY === 'khoang' ? '' : ' gần nhất') +
     ` (${dLab(D.days[NGi[0]])} – ${dLab(D.days[NGi[n-1]])})${
-       kbCam > 0 ? ` · <b>${kbCam}</b> rule chưa nổ lần nào cả kỳ nên không có dòng ở đây` : ''} ·
-     ô càng sáng càng nhiều alert · viền cam = ngày đỉnh của chính kịch bản đó`;
+       kbCam > 0 ? ` · <b>${kbCam}</b> rule chưa nổ lần nào cả kỳ nên không có dòng ở đây` : ''} · ` +
+    (THU_GON
+      ? `<b>đang thu gọn</b> — cột Σ là tổng alert của trọn ${n} ngày trên`
+      : `ô càng sáng càng nhiều alert · viền cam = ngày đỉnh của chính kịch bản đó`);
   $('matNote').innerHTML =
     `<b>Cách đọc:</b> thấy ngày nào lạ ở mục ③ thì dóng xuống cột ngày đó ở đây.
      Cột sáng đều từ trên xuống = cả hệ cùng tăng (thường do data về dồn).

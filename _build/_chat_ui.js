@@ -15,7 +15,11 @@
   var nut = $("f2-nut"), panel = $("f2-panel"), tin = $("f2-tin"),
       o = $("f2-o"), gui = $("f2-gui"), goiy = $("f2-goiy"),
       chip = $("f2-chip"), phu = $("f2-phu"), conlai = $("f2-conlai"),
-      thu = $("f2-thu"), phong = $("f2-phong");
+      thu = $("f2-thu"), phong = $("f2-phong"),
+      nutMoi = $("f2-moi"), nutSos = $("f2-sos"), sosBox = $("f2-sosbox"),
+      sosDs = $("f2-sos-ds"), sosDem = $("f2-sos-dem"), xoaHet = $("f2-xoahet");
+
+  var KHO = window.F2Kho || null;
 
   /* Dashboard đang nằm trong iframe của trang khác (bản deploy trên
      Streamlit) thì góc phải dưới không còn là của mình: huy hiệu Streamlit
@@ -363,6 +367,20 @@
         veGoiY(t.goiY.length ? t.goiY : GOI_Y_DAU.slice(0, 3));
         lichSu.push({ hoi: cau, dap: t.van });
         if (lichSu.length > 6) lichSu.shift();
+        /* Lưu lại để tải trang vẫn còn. Giữ cả nhãn kiểm chứng, không thì
+           mở lại cuộc cũ mất dấu "đã đối chiếu n số". */
+        if (KHO) {
+          try {
+            /* Chỉ giữ đúng những trường veNhan() đọc — nhét cả R vào thì
+               kéo theo dữ liệu thô của từng bước, phình localStorage. */
+            KHO.themTin(cau, t.van, {
+              kiemChung: R.kiemChung, cacBuoc: R.cacBuoc, giay: R.giay,
+              boDienGiai: R.boDienGiai, piiDaCat: R.piiDaCat,
+              khongCanDoiChieu: R.khongCanDoiChieu, dap: t.van
+            });
+            veDanhSach();
+          } catch (e) { /* kho hỏng thì chat vẫn phải chạy */ }
+        }
         dangCho = false;
         gui.disabled = false;
         nut.classList.remove("f2-nghi");
@@ -396,6 +414,123 @@
       conlai.textContent = "";
     }
   }
+
+  /* ═══════════════ CÁC CUỘC TRÒ CHUYỆN ═══════════════
+     Lưu vào localStorage (xem _chat_kho.js) nên tải lại trang vẫn còn.
+     Hỏng phần này không được làm hỏng chat: mọi chỗ đều kiểm KHO trước,
+     không có kho thì chat chạy như cũ, chỉ không nhớ được. */
+
+  function nhanLuc(t) {
+    var d = new Date(t), n = new Date();
+    var hn = d.getFullYear() === n.getFullYear() &&
+             d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+    var hh = ("0" + d.getHours()).slice(-2) + ":" +
+             ("0" + d.getMinutes()).slice(-2);
+    return hn ? hh : ("0" + d.getDate()).slice(-2) + "/" +
+                     ("0" + (d.getMonth() + 1)).slice(-2);
+  }
+
+  function veDanhSach() {
+    if (!KHO) return;
+    var ds = KHO.danhSach(), nay = KHO.maHienTai();
+
+    sosDem.textContent = ds.length
+      ? ds.length + " cuộc đã lưu" + (KHO.ben() ? "" : " (phiên này thôi)")
+      : "Chưa có cuộc nào";
+    xoaHet.style.display = ds.length ? "" : "none";
+
+    if (!ds.length) {
+      sosDs.innerHTML =
+        '<div class="f2-sos-trong">Các cuộc trò chuyện sẽ tự lưu lại ở đây. ' +
+        'Tải lại trang vẫn xem lại được.</div>';
+      return;
+    }
+
+    sosDs.innerHTML = ds.map(function (c) {
+      return '<div class="f2-cuoc' + (c.ma === nay ? " dang" : "") +
+             '" data-ma="' + c.ma + '">' +
+             '<span class="f2-cuoc-ten">' + thoat(c.ten) + "</span>" +
+             '<span class="f2-cuoc-luc">' + nhanLuc(c.luc) + "</span>" +
+             '<button class="f2-cuoc-xoa" data-xoa="' + c.ma +
+             '" title="Xoá cuộc này">×</button></div>';
+    }).join("");
+  }
+
+  /* Vẽ lại một cuộc cũ ra khung tin nhắn. Không gọi model — chỉ dựng lại
+     đúng những gì đã lưu. */
+  function moCuoc(m) {
+    if (!KHO) return;
+    var c = KHO.layCuoc(m);
+    if (!c) return;
+    KHO.chon(m);
+    tin.innerHTML = "";
+    lichSu = [];
+
+    c.tin.forEach(function (t) {
+      if (t.vai === "toi") {
+        themHang("toi", md(t.van));
+      } else {
+        var d = themHang("bot", md(t.van));
+        noiThamChieu(d.querySelector(".f2-bong"));
+        /* Dựng lại nhãn kiểm chứng — mất nó thì không còn biết câu trả
+           lời cũ đã được soát số hay chưa. */
+        if (t.kem) veNhan(t.kem);
+      }
+    });
+    /* Ngữ cảnh cho câu hỏi nối tiếp lấy từ chính cuộc vừa mở, nên hỏi
+       tiếp "cái đó" vẫn hiểu đúng thứ đang nói. */
+    lichSu = KHO.nganhCanh(6);
+    veGoiY(GOI_Y_DAU.slice(0, 3));
+    dongDanhSach();
+    cuonXuong();
+  }
+
+  function cuocMoi() {
+    if (KHO) KHO.moiCuoc();
+    tin.innerHTML = "";
+    lichSu = [];
+    themHang("bot", md(
+      "Cuộc mới. Hỏi gì cũng được — tôi vẫn đọc đúng dữ liệu của kỳ này."));
+    veGoiY(GOI_Y_DAU);
+    dongDanhSach();
+    veDanhSach();
+    o.focus();
+  }
+
+  function moDanhSach() {
+    veDanhSach();
+    sosBox.classList.remove("f2-an");
+    nutSos.classList.add("on");
+    nutSos.setAttribute("aria-expanded", "true");
+  }
+  function dongDanhSach() {
+    sosBox.classList.add("f2-an");
+    nutSos.classList.remove("on");
+    nutSos.setAttribute("aria-expanded", "false");
+  }
+
+  if (nutMoi) nutMoi.onclick = cuocMoi;
+  if (nutSos) nutSos.onclick = function () {
+    if (sosBox.classList.contains("f2-an")) moDanhSach(); else dongDanhSach();
+  };
+  if (xoaHet) xoaHet.onclick = function () {
+    if (!KHO) return;
+    KHO.xoaHet();
+    veDanhSach();
+    cuocMoi();
+  };
+  if (sosDs) sosDs.onclick = function (e) {
+    var x = e.target.closest ? e.target.closest("[data-xoa]") : null;
+    if (x) {                       /* bấm dấu × — xoá, không mở cuộc */
+      e.stopPropagation();
+      KHO.xoa(x.getAttribute("data-xoa"));
+      veDanhSach();
+      if (!KHO.maHienTai()) cuocMoi();
+      return;
+    }
+    var c = e.target.closest ? e.target.closest(".f2-cuoc") : null;
+    if (c) moCuoc(c.getAttribute("data-ma"));
+  };
 
   /* ───────── mở / thu ───────── */
   var hen_dong = null;
@@ -605,20 +740,34 @@
     o.disabled = true;
     gui.disabled = true;
   } else if (!BN.coKhoa()) {
+    /* Chỗ đặt khoá khác nhau theo bản đang chạy — chỉ đúng một nơi, nói
+       nhầm chỗ thì người dùng đi tìm mỏi mắt. */
+    var oProxy = !!(window.F2_CAU_HINH && window.F2_CAU_HINH.proxy);
     themHang("bot", md(
       "**Chưa có khoá API** nên tôi chưa trả lời được.\n\n" +
-      "Trên Streamlit: mở **Settings → Secrets** của app rồi dán vào\n\n" +
-      "```\nGEMINI_API_KEYS = [\"khoa1\", \"khoa2\"]\n```\n\n" +
-      "Tại máy: đặt khoá trong `.streamlit/secrets.toml` rồi chạy lại " +
-      "`_build/xem_truoc.py`.\n\n" +
+      (oProxy
+        ? "Trên Cloudflare: mở **Settings → Variables and Secrets** của " +
+          "project rồi thêm `OPENROUTER_API_KEY`.\n\n"
+        : "Trên Streamlit: mở **Settings → Secrets** của app rồi dán vào\n\n" +
+          "```\nGEMINI_API_KEYS = [\"khoa1\", \"khoa2\"]\n```\n\n" +
+          "Tại máy: đặt khoá trong `.streamlit/secrets.toml` rồi chạy lại " +
+          "`_build/xem_truoc.py`.\n\n") +
       "Dashboard và giao diện chat vẫn dùng bình thường."));
   } else {
-    themHang("bot", md(
-      "Chào bạn. Tôi đọc được dữ liệu alert của kỳ này và trả lời bằng số " +
-      "lấy thẳng từ đó — không đoán.\n\n" +
-      "Hỏi gì cũng được, hoặc bấm một câu gợi ý bên dưới."));
+    /* Có cuộc dở từ lần trước thì mở lại đúng chỗ đó, thay vì chào lại từ
+       đầu — đóng tab rồi mở ra mà mất cả mạch hỏi là bực nhất. */
+    var cuocCu = KHO && KHO.maHienTai() && KHO.layCuoc(KHO.maHienTai());
+    if (cuocCu && cuocCu.tin && cuocCu.tin.length) {
+      moCuoc(cuocCu.ma);
+    } else {
+      themHang("bot", md(
+        "Chào bạn. Tôi đọc được dữ liệu alert của kỳ này và trả lời bằng số " +
+        "lấy thẳng từ đó — không đoán.\n\n" +
+        "Hỏi gì cũng được, hoặc bấm một câu gợi ý bên dưới."));
+    }
   }
-  veGoiY(GOI_Y_DAU);
+  if (!tin.querySelector(".f2-hang")) veGoiY(GOI_Y_DAU);
+  veDanhSach();
   capNhatConLai();
 
   /* Mở ra vài hàm thuần để kiểm thử tự động dựng lại được câu trả lời mà

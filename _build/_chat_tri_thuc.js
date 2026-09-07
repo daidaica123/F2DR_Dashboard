@@ -101,10 +101,25 @@ window.F2TriThuc = (function () {
   }
 
   function chiSoNgay(ngay) {
-    var d = duLieu(), i = d.days.indexOf(String(ngay).trim());
+    var d = duLieu(), s = String(ngay).trim();
+    var i = d.days.indexOf(s);
     if (i < 0) {
-      throw new Error("Ngày " + ngay + " không có trong kỳ dữ liệu (" +
-                      d.days[0] + " đến " + d.days[d.days.length - 1] + ")");
+      /* "Chưa có dữ liệu" KHÁC HẲN "có dữ liệu và bằng 0" — với dashboard
+         rủi ro, nhầm hai cái là nhầm giữa "hệ thống sạch" và "chưa biết
+         gì". Nói rõ ngày đó rơi vào đâu để model không trả lời thành 0. */
+      var d0 = d.days[0], d1 = d.days[d.days.length - 1], vi;
+      if (s < d0) {
+        vi = "TRƯỚC kỳ dữ liệu — kỳ này chỉ bắt đầu từ " + d0 + ".";
+      } else if (s > d1) {
+        vi = "SAU kỳ dữ liệu — dữ liệu mới nhất là " + d1 +
+             ". Ngày này CHƯA CÓ DỮ LIỆU, không phải bằng 0.";
+      } else {
+        vi = "nằm trong kỳ nhưng KHÔNG CÓ trong dữ liệu (ngày hụt). " +
+             "Đây là thiếu dữ liệu, KHÔNG phải ngày 0 alert.";
+      }
+      throw new Error("Ngày " + s + " " + vi +
+        " Kỳ dữ liệu: " + d0 + " đến " + d1 + " (" + d.days.length + " ngày). " +
+        "TUYỆT ĐỐI không trả lời là 0 alert — hãy nói rõ là chưa có dữ liệu.");
     }
     return i;
   }
@@ -1097,6 +1112,208 @@ window.F2TriThuc = (function () {
     };
   };
 
+  /* ══════════════════ ĐỒNG PHẠM GIỮA KỊCH BẢN ══════════════════
+     Hai kịch bản hay nổ cùng MỘT khách nói lên một trong hai điều, và cả
+     hai đều đáng biết:
+       · chúng bắt cùng một hành vi  -> trùng lặp, cân nhắc bỏ bớt một
+       · chúng là hai mặt của một thủ đoạn -> đây mới là đầu mối điều tra
+
+     Tính trên toàn bộ 126.616 lượt (khách × ngày) — dữ liệu giàu nhất của
+     dashboard mà trước nay không hàm nào chạm tới.
+
+     Đo bằng LIFT chứ không bằng số lượt trùng: hai kịch bản đông alert thì
+     đương nhiên hay gặp nhau, đếm thô sẽ luôn cho ra đúng mấy cặp to nhất.
+     Lift = (tỉ lệ gặp nhau thực tế) / (tỉ lệ nếu chúng độc lập). Lift 5
+     nghĩa là gặp nhau dày gấp 5 lần mức ngẫu nhiên. */
+  H.kich_ban_di_cung_nhau = function (ts) {
+    ts = ts || {};
+    var d = duLieu();
+    var n = Math.max(1, Math.min(+ts.n || 10, 25));
+    /* Sàn: cặp chỉ trùng vài lượt thì lift vọt lên rất cao mà vô nghĩa —
+       đúng cái bẫy đã mắc ở hanh_vi_theo_cum_diem. */
+    var san = Math.max(5, +ts.toi_thieu || 20);
+
+    var demKb = {}, demCap = {}, tong = d.picks.length;
+    d.picks.forEach(function (pk) {
+      var ids = [], da = {};
+      for (var w = 0; w < pk.length; w += 2) {
+        if (!da[pk[w]]) { da[pk[w]] = 1; ids.push(pk[w]); }
+      }
+      ids.forEach(function (a) { demKb[a] = (demKb[a] || 0) + 1; });
+      ids.sort(function (x, y) { return x - y; });
+      for (var i = 0; i < ids.length; i++)
+        for (var j = i + 1; j < ids.length; j++) {
+          var kh = ids[i] + "|" + ids[j];
+          demCap[kh] = (demCap[kh] || 0) + 1;
+        }
+    });
+
+    var ds = Object.keys(demCap).map(function (kh) {
+      var p = kh.split("|"), a = +p[0], b = +p[1], c = demCap[kh];
+      var pa = demKb[a] / tong, pb = demKb[b] / tong, pab = c / tong;
+      return {
+        kich_ban_a: d.kb[a].ten, kich_ban_b: d.kb[b].ten,
+        nhom_a: d.kb[a].nhom, nhom_b: d.kb[b].nhom,
+        so_luot_di_cung: c,
+        /* Tỉ lệ có điều kiện hai chiều: A nổ thì bao nhiêu % kèm B, và
+           ngược lại. Lệch nhau nhiều nghĩa là quan hệ một chiều — B gần
+           như luôn kèm A nhưng A thì không, đáng chú ý hơn hẳn. */
+        khi_co_a_thi_co_b: lam(c / demKb[a] * 100, 1),
+        khi_co_b_thi_co_a: lam(c / demKb[b] * 100, 1),
+        lift: lam(pab / (pa * pb), 1),
+        so_luot_a: demKb[a], so_luot_b: demKb[b]
+      };
+    }).filter(function (x) { return x.so_luot_di_cung >= san; });
+
+    ds.sort(function (x, y) { return y.lift - x.lift; });
+
+    return {
+      _mo_ta: "Cặp kịch bản hay nổ cùng một khách trong cùng ngày (toàn kỳ " +
+              tong.toLocaleString("vi") + " lượt)",
+      tong_luot: tong,
+      san_toi_thieu: san,
+      so_cap_dat_san: ds.length,
+      danh_sach: ds.slice(0, n),
+      _ghi_chu: "lift = gặp nhau dày gấp mấy lần mức ngẫu nhiên. " +
+        "lift > 3 là đáng soi: hoặc hai rule trùng nhau, hoặc đó là một " +
+        "thủ đoạn có cấu trúc. 'khi_co_a_thi_co_b' lệch hẳn " +
+        "'khi_co_b_thi_co_a' = quan hệ một chiều."
+    };
+  };
+
+  /* Alert của một kịch bản dồn vào ít khách hay rải đều?
+     Cùng 10.000 alert nhưng 500 khách với 10 khách là hai câu chuyện khác
+     hẳn: rải đều thường là rule quét rộng, dồn cục là vài đối tượng bắn
+     liên tục — cái sau mới đáng điều tra. */
+  H.do_tap_trung_kich_ban = function (ts) {
+    ts = ts || {};
+    var d = duLieu();
+    var ten = ts.kich_ban ? String(ts.kich_ban) : null;
+    var idx = {};
+    d.kb.forEach(function (k, i) { idx[i] = { ten: k.ten, nhom: k.nhom,
+      alert: 0, khach: {}, theoKhach: {} }; });
+
+    d.picks.forEach(function (pk, li) {
+      for (var w = 0; w < pk.length; w += 2) {
+        var o = idx[pk[w]], kh = d.luotKh[li];
+        o.alert += pk[w + 1];
+        o.khach[kh] = 1;
+        o.theoKhach[kh] = (o.theoKhach[kh] || 0) + pk[w + 1];
+      }
+    });
+
+    var ra = Object.keys(idx).map(function (i) {
+      var o = idx[i];
+      var ks = Object.keys(o.theoKhach);
+      if (!ks.length) return null;
+      var v = ks.map(function (t) { return o.theoKhach[t]; })
+                .sort(function (a, b) { return b - a; });
+      var tong = v.reduce(function (a, b) { return a + b; }, 0);
+      /* Bao nhiêu % alert đến từ 10% khách đông nhất — chỉ số dễ đọc hơn
+         hệ số Gini mà nói lên đúng điều cần biết. */
+      var top = Math.max(1, Math.round(v.length * 0.1));
+      var tongTop = v.slice(0, top).reduce(function (a, b) { return a + b; }, 0);
+      return {
+        kich_ban: o.ten, nhom: o.nhom,
+        tong_alert: tong, so_khach: v.length,
+        alert_moi_khach: lam(tong / v.length, 1),
+        khach_nang_nhat: v[0],
+        ty_le_alert_tu_10pc_khach_dong_nhat: lam(tongTop / tong * 100, 1)
+      };
+    }).filter(Boolean);
+
+    if (ten) {
+      var mot = ra.filter(function (x) {
+        return x.kich_ban.toLowerCase().indexOf(ten.toLowerCase()) >= 0;
+      });
+      return { _mo_ta: "Độ tập trung của kịch bản khớp '" + ten + "'",
+               danh_sach: mot };
+    }
+    ra.sort(function (a, b) {
+      return b.ty_le_alert_tu_10pc_khach_dong_nhat -
+             a.ty_le_alert_tu_10pc_khach_dong_nhat;
+    });
+    return {
+      _mo_ta: "Kịch bản nào dồn alert vào ít khách nhất (xếp giảm dần)",
+      danh_sach: ra.slice(0, Math.max(1, Math.min(+ts.n || 12, 38))),
+      _ghi_chu: "Tỉ lệ càng cao = alert càng dồn vào một nhúm khách. " +
+        "Trên 60% thường là vài đối tượng bắn liên tục, đáng điều tra hơn " +
+        "rule quét rộng."
+    };
+  };
+
+  /* ══════════════════ SO HAI KHOẢNG THỜI GIAN ══════════════════
+     "Tháng 8 khác tháng 7 chỗ nào" — trước phải gọi hai lần rồi tự trừ
+     nhẩm, vừa dễ sai vừa không nêu được cái gì đổi mạnh nhất. */
+  H.so_sanh_hai_ky = function (ts) {
+    ts = ts || {};
+    var d = duLieu();
+    var A = chiSoKhoang({ tu: ts.tu_a, den: ts.den_a });
+    var B = chiSoKhoang({ tu: ts.tu_b, den: ts.den_b });
+    if (!A || !A.length || !B || !B.length) {
+      return { _mo_ta: "Thiếu mốc thời gian",
+               _loi: "Cần đủ bốn tham số: tu_a, den_a, tu_b, den_b " +
+                     "(dạng YYYY-MM-DD hoặc DD/MM). Kỳ dữ liệu: " +
+                     d.days[0] + " đến " + d.days[d.days.length - 1] };
+    }
+
+    function gom(idx) {
+      var al = 0, kbo = {};
+      d.kb.forEach(function (k, i) {
+        var s = 0;
+        idx.forEach(function (j) { s += k.v[j]; });
+        al += s;
+        if (s) kbo[k.ten] = { alert: s, nhom: k.nhom };
+      });
+      return { alert: al, kb: kbo, so_ngay: idx.length };
+    }
+    var ga = gom(A), gb = gom(B);
+
+    var ten = {};
+    Object.keys(ga.kb).forEach(function (t) { ten[t] = 1; });
+    Object.keys(gb.kb).forEach(function (t) { ten[t] = 1; });
+
+    var doi = Object.keys(ten).map(function (t) {
+      var a = ga.kb[t] ? ga.kb[t].alert : 0;
+      var b = gb.kb[t] ? gb.kb[t].alert : 0;
+      /* So TRUNG BÌNH MỖI NGÀY, không so tổng: hai kỳ lệch số ngày thì so
+         tổng là sai hẳn (tháng 9 mới 5 ngày so với tháng 8 đủ 31 ngày). */
+      var ta = a / ga.so_ngay, tb = b / gb.so_ngay;
+      return {
+        kich_ban: t, nhom: (ga.kb[t] || gb.kb[t]).nhom,
+        alert_ky_a: a, alert_ky_b: b,
+        tb_ngay_ky_a: lam(ta, 1), tb_ngay_ky_b: lam(tb, 1),
+        thay_doi_pc: ta > 0 ? lam((tb - ta) / ta * 100, 1)
+                            : (tb > 0 ? null : 0),
+        trang_thai: ta === 0 && tb > 0 ? "MỚI XUẤT HIỆN"
+                  : tb === 0 && ta > 0 ? "TẮT HẲN" : ""
+      };
+    });
+
+    var co = doi.filter(function (x) { return x.thay_doi_pc !== null; });
+    co.sort(function (a, b) { return b.thay_doi_pc - a.thay_doi_pc; });
+    var moi = doi.filter(function (x) { return x.trang_thai === "MỚI XUẤT HIỆN"; });
+    var tat = doi.filter(function (x) { return x.trang_thai === "TẮT HẲN"; });
+
+    var tbA = ga.alert / ga.so_ngay, tbB = gb.alert / gb.so_ngay;
+    return {
+      _mo_ta: "So kỳ A (" + d.days[A[0]] + " – " + d.days[A[A.length-1]] +
+              ", " + ga.so_ngay + " ngày) với kỳ B (" + d.days[B[0]] + " – " +
+              d.days[B[B.length-1]] + ", " + gb.so_ngay + " ngày)",
+      ky_a: { tu: d.days[A[0]], den: d.days[A[A.length-1]],
+              so_ngay: ga.so_ngay, tong_alert: ga.alert, tb_ngay: lam(tbA, 1) },
+      ky_b: { tu: d.days[B[0]], den: d.days[B[B.length-1]],
+              so_ngay: gb.so_ngay, tong_alert: gb.alert, tb_ngay: lam(tbB, 1) },
+      thay_doi_chung_pc: tbA > 0 ? lam((tbB - tbA) / tbA * 100, 1) : null,
+      tang_manh_nhat: co.slice(0, 6),
+      giam_manh_nhat: co.slice(-6).reverse(),
+      moi_xuat_hien: moi,
+      tat_han: tat,
+      _ghi_chu: "Mọi so sánh theo TRUNG BÌNH MỖI NGÀY vì hai kỳ có thể " +
+        "lệch số ngày. Kỳ A là mốc so sánh, kỳ B là kỳ đang xét."
+    };
+  };
+
   /* ══════════════════ MÔ TẢ CHO LLM ══════════════════ */
   var MO_TA = {
     tong_quan: "Bức tranh chung cả kỳ: tổng alert, khách, kịch bản, ngày cao nhất",
@@ -1116,6 +1333,9 @@ window.F2TriThuc = (function () {
     thong_ke_nhom: "Alert/khách/kịch bản theo nhóm nghiệp vụ. Tham số: ngay (một ngày) hoặc tu + den (khoảng ngày). Không truyền = toàn kỳ",
     nhom_im_lang: "Nhóm nghiệp vụ không có alert nào",
     nhom_theo_ngay: "Một nhóm biến động qua các ngày. Tham số: nhom",
+    kich_ban_di_cung_nhau: "Cặp kịch bản nào hay nổ cùng MỘT khách trong cùng ngày. Dùng khi hỏi: hai rule có trùng nhau không, kịch bản nào đi kèm kịch bản nào, tổ hợp nào là thủ đoạn có cấu trúc. Xếp theo lift (dày gấp mấy lần mức ngẫu nhiên), KHÔNG phải theo số lượt — hai rule đông alert thì đương nhiên hay gặp nhau. Tham số: n (số cặp, mặc định 10), toi_thieu (sàn số lượt, mặc định 20).",
+    do_tap_trung_kich_ban: "Alert của kịch bản dồn vào ít khách hay rải đều. Dùng khi hỏi: rule nào bắn vào vài đối tượng, rule nào quét rộng, alert có tập trung không. Tham số: kich_ban (tên, để trống thì xếp hạng tất cả), n.",
+    so_sanh_hai_ky: "So HAI KHOẢNG THỜI GIAN với nhau: kịch bản nào tăng/giảm mạnh nhất, cái gì mới xuất hiện, cái gì tắt hẳn. Dùng khi hỏi 'tháng 8 so tháng 7', 'tuần này so tuần trước'. Tham số BẮT BUỘC đủ bốn: tu_a, den_a (kỳ mốc), tu_b, den_b (kỳ đang xét). Mọi so sánh theo trung bình mỗi ngày nên hai kỳ lệch số ngày vẫn đúng.",
     hanh_vi_theo_cum_diem: "Khách trong MỘT KHOẢNG ĐIỂM IMPACT thì hành vi ra sao: dính kịch bản nào, tổ hợp nào, lặp mấy lần, kịch bản nào đặc trưng cho khoảng đó. Tham số: tu + den (điểm của KHÁCH, 0-100) HOẶC muc ('Low'/'Medium'/'High'/'Very High'), thêm ngay nếu chỉ xét một ngày. LƯU Ý: 'điểm' ở đây là điểm Impact của KHÁCH trong một ngày — KHÁC hẳn 'điểm gốc' của kịch bản. Hỏi 'khách 80-82 điểm làm gì' thì dùng hàm này, đừng tra điểm gốc kịch bản.",
     top_khach_hang: "Khách bị bắn nhiều alert nhất. Tham số: n, ngay",
     ho_so_khach: "Hồ sơ một khách: từng ngày dính kịch bản gì. Tham số: ma",

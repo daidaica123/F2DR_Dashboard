@@ -33,6 +33,7 @@ DASH = os.path.join(GOC, "F2DR_Van_Hanh.html")
 UI = os.path.join(HERE, "_chat_ui.html")
 JS_TRI_THUC = os.path.join(HERE, "_chat_tri_thuc.js")
 JS_BO_NAO = os.path.join(HERE, "_chat_bo_nao.js")
+JS_KHO = os.path.join(HERE, "_chat_kho.js")
 JS_UI = os.path.join(HERE, "_chat_ui.js")
 RA = os.path.join(GOC, "F2DR_Van_Hanh_xemtruoc.html")
 
@@ -105,6 +106,9 @@ def ghep(dash, khoa):
             + ";</script>\n"
             + "<script>\n" + doc(JS_TRI_THUC) + "\n</script>\n"
             + "<script>\n" + doc(JS_BO_NAO) + "\n</script>\n"
+            # Kho hoi thoai phai nap TRUOC giao dien: giao dien doc
+            # window.F2Kho ngay luc khoi tao de mo lai cuoc dang do.
+            + "<script>\n" + doc(JS_KHO) + "\n</script>\n"
             + "<script>\n" + doc(JS_UI) + "\n</script>\n")
     # Dashboard co dung </body> o cuoi file.
     if "</body>" in dash:
@@ -131,7 +135,7 @@ def main():
     # -> panel treo o dau ba cham ma khong bao gi. Da dinh hai lan roi.
     import soat_js
     print("Soat cu phap JS:")
-    if soat_js.main([JS_TRI_THUC, JS_BO_NAO, JS_UI]):
+    if soat_js.main([JS_TRI_THUC, JS_BO_NAO, JS_KHO, JS_UI]):
         sys.exit("Dung lai: sua loi JS o tren roi chay lai.")
     print()
 

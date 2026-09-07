@@ -28,6 +28,7 @@
 10. [Cạm bẫy đã trả giá](#10-cạm-bẫy-đã-trả-giá)
 11. [Những thứ GIỮ NGUYÊN](#11-những-thứ-giữ-nguyên--đừng-tự-ý-đổi)
 12. [Future Improvements](#12-future-improvements--chưa-làm-đừng-tự-ý-làm)
+12b. [**Phiên 07/09/2026** — 67 ngày, bản Cloudflare, chatbot nâng cấp](#12b-phiên-07092026--dữ-liệu-67-ngày-bản-cloudflare-chatbot-nâng-cấp)
 13. [Current State](#13-current-state--dashboard-đang-ở-đâu)
 
 ---
@@ -41,8 +42,11 @@
 | **Dựng** | `python _build/build_van_hanh.py` → `F2DR_Van_Hanh.html` |
 | **Xem trước có chatbot** | `python _build/xem_truoc.py` → `F2DR_Van_Hanh_xemtruoc.html` (**có khoá API, đã gitignore**) |
 | **Deploy** | https://f2drdashboard.streamlit.app/ — auto từ nhánh `main` |
+| **Deploy 2** | https://f2dr-dashboard-pages.pages.dev — Cloudflare Pages, repo riêng, xem [§12b](#12b-phiên-07092026--dữ-liệu-67-ngày-bản-cloudflare-chatbot-nâng-cấp) |
 | **Repo** | https://github.com/daidaica123/F2DR_Dashboard — **public**, chủ dự án đã chốt |
-| **Chatbot** | JS chạy trong trang, 22 hàm tri thức, gọi Gemini thẳng từ trình duyệt |
+| **Chatbot** | JS chạy trong trang, **26 hàm** tri thức, lưu lịch sử qua localStorage |
+
+> **Phiên gần nhất (07/09/2026) đổi nhiều thứ lớn: dữ liệu 67 ngày, thêm bản Cloudflare, chatbot 26 hàm + lưu lịch sử. Đọc [§12b](#12b-phiên-07092026--dữ-liệu-67-ngày-bản-cloudflare-chatbot-nâng-cấp) trước khi sửa gì liên quan.**
 
 **Ba lỗi quy trình đã dính nhiều lần, đừng dính lại:**
 
@@ -764,16 +768,116 @@ Ghi lại từ đợt audit, để lần sau có việc thì biết bắt đầu
 
 ---
 
+## 12b. Phiên 07/09/2026 — dữ liệu 67 ngày, bản Cloudflare, chatbot nâng cấp
+
+> Phiên dài nhất từ trước tới nay. Ghi lại đủ để phiên sau không phải dò lại.
+
+### 12b.1. Dữ liệu: 7 ngày → 67 ngày
+
+| | Trước | Sau |
+|---|---|---|
+| Kỳ | 26/08 – 01/09 (7 ngày) | **01/07 – 05/09 (67 ngày)** |
+| Alert | 15.785 | **210.713** |
+| Khách | — | **88.910** (126.616 lượt) |
+| Kịch bản có alert | 35/50 | **38/50** |
+| File dữ liệu | CSV 76 MB | **`score_clean_full.csv.gz` 6,2 MB** |
+
+**gzip chứ không cắt cột:** đo từng cột thấy `usecase_name`+`usecase_clean` chiếm 34%, nhưng bỏ cột nào cũng mất thông tin. pandas đọc `.csv.gz` trực tiếp nên không phải đổi code — 76 → 6,2 MB, giữ nguyên mọi cột.
+
+**Luồng nạp hằng ngày:** `_build/nap_alert_ngay.py`. Người dùng gõ "nạp file này: `<đường dẫn>`".
+**BẪY NGÀY — đã sai một lần, người dùng phải nhắc lại:** file alert ghi **ngày lên alert**, không phải ngày diễn ra. **Phải trừ 2 ngày**: file ghi 07/09 = ngày 05/09 trên dashboard. Script tự trừ, đừng sửa.
+
+### 12b.2. BA bản chạy song song — cùng một bộ mã nguồn
+
+| Bản | Ở đâu | Khoá API nằm đâu |
+|---|---|---|
+| HTML | `F2DR_Van_Hanh_xemtruoc.html` | nhúng thẳng trong file (đã gitignore) |
+| Streamlit | f2drdashboard.streamlit.app | Secrets, ghép lúc chạy |
+| **Cloudflare** | **f2dr-dashboard-pages.pages.dev** | **biến môi trường, trang KHÔNG có khoá** |
+
+Cả ba dùng chung `_build/*` và hàm `xem_truoc.ghep()`. **Sửa một chỗ, dựng lại là cả ba cùng đổi** — đừng chép code sang thư mục Pages.
+
+Thư mục bản Pages: `D:\Project F2DR\F2DR Van Hanh Pages\` (repo riêng: `daidaica123/f2dr-dashboard-pages`).
+Dựng: `python _build/dung_pages.py --so-khoa 1` · Thử tại máy: `py -3.10 _build/chay_thu.py` (cổng 8910).
+
+### 12b.3. Cloudflare: hai chuyện phải biết trước khi đụng vào
+
+**(a) Pages là trang TĨNH — không có "lúc chạy" để ghép khoá.**
+Giải pháp: `functions/api/gemini.js` chạy phía Cloudflare, giữ khoá ở biến môi trường. Trình duyệt gửi lên **số thứ tự khoá** (`{model, khoa: 2, than}`), hàm tra ra khoá thật. Nhờ vậy cơ chế xoay khoá 5 khoá × 5 model **giữ nguyên** — vẫn nhớ "khoá 3 + model X hết lượt" — mà trang không bao giờ chứa khoá.
+
+**(b) Google CHẶN Gemini API gọi từ Hồng Kông.**
+Cloudflare phục vụ Việt Nam từ colo **HKG** (đã đo `cdn-cgi/trace`). Gọi thẳng Gemini từ đó trả `User location is not supported for the API use`. Máy người dùng ở VN nên bản HTML/Streamlit **không dính**.
+→ Bản Pages đi qua **OpenRouter** (`OPENROUTER_API_KEY`). Hàm tự chọn: có khoá OpenRouter thì dùng, không thì quay về Gemini.
+
+**Model miễn phí OpenRouter hay nghẽn/từ chối — đã đo 07/09:**
+- `google/gemma-4-26b-a4b-it:free` → 429 `temporarily rate-limited upstream`
+- `inclusionai/ling-3.0-flash-sante:free` → chạy, NHƯNG **không nhận `response_format`** (400 `does not support feature: structured-outputs`)
+- `minimax/minimax-m2.7:free`, `nvidia/nemotron-3.5-lightning:free` → nhận `response_format`
+
+→ Hàm tự nhảy model khi gặp 400/429, và model nào không nhận `response_format` thì **dặn trả JSON bằng lời** thay vì gửi tham số đó.
+
+**Tên model Gemini đang dùng** (đừng viết theo trí nhớ — tôi từng bịa 6 tên đều 404):
+`gemini-3.1-flash-lite` · `gemini-3.8-flash` · `gemini-3.5-flash` · `gemini-3-flash-preview` · `gemini-flash-latest` · `gemini-3.7-flash` · `gemini-2.5-flash`
+
+**Khoá Gemini hiện tại dạng `AQ.Ab8RN6…`, KHÔNG phải `AIza…`.** Bộ chặn trong `dung_pages.py` quét cả hai mẫu — đừng bỏ mẫu `AQ.`.
+
+### 12b.4. Chatbot: 23 → 26 hàm + lưu lịch sử
+
+**Ba hàm mới** (khai thác 126.616 lượt trước nay bỏ không):
+
+| Hàm | Dùng khi |
+|---|---|
+| `kich_ban_di_cung_nhau` | hai rule có trùng nhau không, tổ hợp nào là thủ đoạn có cấu trúc |
+| `do_tap_trung_kich_ban` | rule bắn vào vài đối tượng hay quét rộng |
+| `so_sanh_hai_ky` | "tháng 8 so tháng 7" — so theo **trung bình mỗi ngày** nên lệch số ngày vẫn đúng |
+
+Đo bằng **lift**, không đếm thô: hai rule đông alert đương nhiên hay gặp nhau. Sàn tối thiểu 20 lượt — lift cao trên nền vài lượt là nhiễu (đúng bẫy đã mắc ở `hanh_vi_theo_cum_diem`).
+
+**Kết quả đáng chú ý:** cặp `VAY_CCCD không hợp lệ` ↔ `VAY_CCCD cấp quá gần ngày vay` có **lift 110,9**, có B thì **98,1%** có A → hai rule gần như trùng nhau, đáng rà lại. `AML_TK nhận tiền rồi chuyển/rút ngay`: **511 alert chỉ từ 3 khách**.
+
+**Lưu lịch sử chat — `_build/_chat_kho.js`, localStorage.**
+**KHÔNG dùng SQLite** dù prompt tham khảo có nói: dashboard chạy trong trình duyệt, không có backend lúc chạy; Streamlit Cloud xoá filesystem mỗi lần ngủ dậy; Pages không có đĩa. localStorage bền qua reload và chạy giống nhau ở cả ba bản.
+Nút `✚` (New Chat) và `☰` (danh sách cuộc) trên thanh tiêu đề. Mở lại trang thì vào đúng cuộc đang dở; ngữ cảnh câu hỏi nối tiếp đọc từ cuộc đang mở nên **mở lại cuộc cũ vẫn hỏi tiếp được**.
+
+**Hai sửa nhỏ nhưng quan trọng:**
+- `coKhoa()` giờ tính cả chế độ proxy — trước đó bản Pages luôn báo "chưa có khoá" dù chat chạy tốt.
+- `chiSoNgay()` phân biệt **"chưa có dữ liệu"** với **"bằng 0"**. Với dashboard rủi ro hai thứ này khác hẳn: 0 alert = hệ sạch, chưa có data = chưa biết gì. Thông báo lỗi dặn thẳng model *"TUYỆT ĐỐI không trả lời là 0 alert"*.
+
+### 12b.5. Giao diện
+
+- **Bảng markdown trong chat**: `md()` trước không dựng `<table>`, model trả bảng thì đổ ra một mớ dấu `|`. Đã thêm. **Bẫy**: số bọc `**đậm**` bị bẻ dòng (`11.362` → `11.36`/`2`) vì `nowrap` trên ô không chặn được ngắt bên trong `<strong>` — phải đặt cho cả thẻ con.
+- **Nút phóng to chat** `⤢`: 412px → ~52% màn hình. Nhớ lựa chọn qua localStorage.
+- **Ma trận thu gọn**: giấu 67 cột ngày thì thừa cả nghìn pixel. Thêm 5 cột — Tỉ trọng (thanh) · % tổng · Ngày nổ · TB/ngày nổ · Ngày đỉnh. **TB chia cho số ngày CÓ nổ**, không chia cả kỳ (kịch bản nổ 2/67 ngày mà chia 67 ra số vô nghĩa). Thanh so với kịch bản nặng nhất, không so tổng (so tổng thì mọi thanh đều tí xíu).
+- **Mục ⑤ chọn khoảng**: thêm chọn theo tháng và full ngày.
+- Thanh chọn ngày chỉ hiện tổng quan + 7 ngày gần nhất + lịch. Bảng mục ③ 7 ngày, biểu đồ vẫn 30.
+
+### 12b.6. Bài học phiên này
+
+**Bịa rồi phải đo lại — ba lần:**
+1. Tưởng Streamlit đen vì iframe sập chiều cao → thật ra `data:` URL vượt ~2 MB.
+2. Tưởng lỗi OpenRouter là 429 nghẽn → bắt request thật thấy **400** `does not support structured-outputs`.
+3. Viết bảng tên model OpenRouter theo trí nhớ → **cả 6 tên đều 404**.
+→ **Bắt thẳng request/response thật, đừng suy đoán.** Playwright `pg.on('request'/'response')` là cách nhanh nhất.
+
+**Báo động giả đã kiểm và loại:** quét `public/index.html` ra 54 chuỗi giống SĐT + 1.402 số 12 chữ số. Soi ngữ cảnh: **54/54 và 1400/1402 nằm gọn trong mã băm hex 20 ký tự** (mã băm toàn `[0-9a-f]` nên ngẫu nhiên có 10 chữ số liền là thường); 2 cái còn lại là `79,999999999966` trong chú thích. **Không có định danh thật.** Repo Pages để public an toàn.
+
+**Bẫy cũ tái diễn:** heredoc bash nuốt `\` trong đường dẫn Windows (`r'D:\Project...'`) → `SyntaxError`. Dùng Write tool. Đây là §9.3 lặp lại lần thứ tư.
+
+**Playwright:** `FrameLocator` **không có** `.evaluate()`. Muốn chạy JS trong iframe phải lấy `Frame` thật từ `pg.frames`.
+
+---
+
 ## 13. Current State — dashboard đang ở đâu
 
-**Ổn định, đã deploy, không có việc dở dang.**
+**Ổn định, đã deploy cả ba bản, không có việc dở dang.**
 
-- Kỳ dữ liệu: `2026-08-26 → 2026-09-01` (7 ngày) · 15.581 alert · 7.636 khách · 9.174 lượt · 35/50 kịch bản có alert
-- Template 3.199 dòng, dựng ra HTML ~531 KB
-- Đã đẩy lên `main`; commit gần nhất thêm chính file này
-- Lần kiểm gần nhất: **178/178** (8 bộ cũ) + 28 (mẫu số) + 8 (bấm gợi ý) — **0 lỗi, không lỗi JS**
-- Đã kiểm bằng ảnh dựng thật: tổng quan · popup ngày · Streamlit chạy local · iframe `data:` + `sandbox`
+- Kỳ dữ liệu: `2026-07-01 → 2026-09-05` (**67 ngày**) · **210.713** alert · **88.910** khách · **126.616** lượt · **38/50** kịch bản có alert
+- Nguồn: `data/score_clean_full.csv.gz` (6,2 MB)
+- Dựng ra HTML ~4,97 MB; ghép chatbot thành ~5,15 MB
+- Ba bản đang chạy: [HTML](#12b2-ba-bản-chạy-song-song--cùng-một-bộ-mã-nguồn) · Streamlit · Cloudflare Pages
+- Chatbot: **26 hàm** tri thức, có lưu lịch sử hội thoại
+- Lần kiểm gần nhất: bảng markdown · nút phóng to · 5 cột thu gọn (đối chiếu CSV tháng 7 khớp tuyệt đối) · lưu chat qua reload · 4 nâng cấp trí tuệ — **0 lỗi JS**
 
-**Việc gần nhất đã làm:** thêm mẫu số `/50` cho mọi số đếm kịch bản; sửa lỗi bấm câu gợi ý làm thu panel chat; sửa huy hiệu Streamlit che nút chat; xoá bot Python và chuyển sang ghép bot JS lúc chạy.
+**Việc gần nhất đã làm:** nạp dữ liệu 67 ngày; dựng bản Cloudflare Pages với proxy giữ khoá; sửa chatbot trả lời được theo khoảng ngày; bảng markdown + nút phóng to; 5 cột lấp chỗ trống khi thu gọn ma trận; lưu lịch sử chat; thêm 3 hàm phân tích.
 
 **Trước khi sửa tiếp, đọc lại [§11 (giữ nguyên)](#11-những-thứ-giữ-nguyên--đừng-tự-ý-đổi) và [§5.2 (chốt không làm)](#52-đã-chốt-không-làm).** Nhiều quyết định trong đó trông như thiếu sót nhưng thực ra là kết quả của một vòng thảo luận và đo đạc — **sửa "cho đúng" mà không đọc lý do là làm hỏng.**

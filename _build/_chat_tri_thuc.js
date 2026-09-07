@@ -185,6 +185,69 @@ window.F2TriThuc = (function () {
         nhan(d.tong.d1) + ")";
   }
 
+  /* ══════════ LỌC THEO KHOẢNG NGÀY ══════════
+     Trước đây các hàm chỉ nhận `ngay` (một ngày duy nhất). Hỏi "từ 01/08 đến
+     31/08" thì không có tham số nào nhận được, model đành bịa lý do "khoảng
+     này không nằm trong kỳ" — sai mà nghe rất chắc, đúng kiểu hỏng tệ nhất.
+     Nay mọi hàm thống kê đều nhận thêm {tu, den}.
+
+     Trả về danh sách CHỈ SỐ ngày, hoặc null nếu không lọc (= toàn kỳ). */
+  function chiSoKhoang(ts) {
+    ts = ts || {};
+    var d = duLieu();
+    if (ts.ngay) {                       // một ngày — giữ cách gọi cũ
+      var j = chiSoNgay(ts.ngay);
+      return [j];
+    }
+    if (!ts.tu && !ts.den) return null;  // không lọc
+    /* Kẹp vào trong kỳ thay vì báo lỗi: hỏi "tháng 8" mà kỳ bắt đầu 15/08
+       thì trả 15/08–31/08 kèm ghi chú, hữu ích hơn là từ chối trả lời. */
+    var tu = ts.tu ? chuanNgay(ts.tu) : d.days[0];
+    var den = ts.den ? chuanNgay(ts.den) : d.days[d.days.length - 1];
+    if (tu > den) { var t = tu; tu = den; den = t; }
+    var ds = [];
+    for (var i = 0; i < d.days.length; i++)
+      if (d.days[i] >= tu && d.days[i] <= den) ds.push(i);
+    return ds;
+  }
+
+  /* Nhận 2026-08-01, 01/08/2026, 01/08 -> 2026-08-01 */
+  function chuanNgay(s) {
+    s = String(s || '').trim();
+    var m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[0];
+    var d = duLieu();
+    m = s.match(/^(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{4}))?$/);
+    if (m) {
+      var nam = m[3] || d.days[0].slice(0, 4);
+      return nam + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    }
+    return s;
+  }
+
+  /* Mô tả phạm vi cho _mo_ta, kèm cảnh báo nếu khoảng hỏi vượt ra ngoài kỳ */
+  function moTaKhoang(ts, idx) {
+    var d = duLieu();
+    if (idx === null) return phamVi(null);
+    if (idx.length === 1) return phamVi(d.days[idx[0]]);
+    if (!idx.length) return 'KHÔNG có ngày nào trong khoảng này';
+    var t = nhan(d.days[idx[0]]), s = nhan(d.days[idx[idx.length - 1]]);
+    var goc = ts.tu ? chuanNgay(ts.tu) : null;
+    var goc2 = ts.den ? chuanNgay(ts.den) : null;
+    var them = '';
+    if ((goc && goc < d.days[0]) || (goc2 && goc2 > d.days[d.days.length - 1]))
+      them = ' (khoảng hỏi rộng hơn kỳ dữ liệu, đã cắt về phần có thật)';
+    return 'từ ' + t + ' đến ' + s + ' — ' + idx.length + ' ngày' + them;
+  }
+
+  /* Cộng alert của một kịch bản trong các ngày idx */
+  function congKB(k, idx) {
+    if (idx === null) return { alert: k.alert, khach: k.kh };
+    var a = 0, kh = 0;
+    for (var i = 0; i < idx.length; i++) { a += k.v[idx[i]]; kh += k.vkh[idx[i]]; }
+    return { alert: a, khach: kh };
+  }
+
   /* ══════════════════ DANH MỤC HÀM ══════════════════ */
   var H = {};
 
@@ -358,20 +421,29 @@ window.F2TriThuc = (function () {
   H.top_kich_ban = function (ts) {
     var d = duLieu(); ts = ts || {};
     var n = ts.n || 10;
-    var j = ts.ngay ? chiSoNgay(ts.ngay) : null;
+    var idx = chiSoKhoang(ts);           // null = toàn kỳ, [j] = 1 ngày, [..] = khoảng
     var ds = d.kb.filter(function (k) {
       return !ts.nhom || k.nhom === ts.nhom;
     }).map(function (k) {
+      var c = congKB(k, idx);
       return { ten: k.ten, nhom: k.nhom, muc: k.lv, diem_goc: k.sc,
-               alert: j === null ? k.alert : k.v[j],
-               khach: j === null ? k.kh : k.vkh[j] };
+               alert: c.alert, khach: c.khach };
     }).filter(function (k) { return k.alert > 0; });
     ds.sort(function (a, b) { return b.alert - a.alert; });
 
-    var tong = j === null ? d.tong.alert : d.ngay[j].alert;
+    var tong = idx === null
+      ? d.tong.alert
+      : idx.reduce(function (a, j) { return a + d.ngay[j].alert; }, 0);
     return {
-      _mo_ta: "Top " + n + " kịch bản nhiều alert nhất, " + phamVi(ts.ngay) +
+      _mo_ta: "Top " + n + " kịch bản nhiều alert nhất, " + moTaKhoang(ts, idx) +
               (ts.nhom ? ", nhóm " + ts.nhom : ""),
+      /* 'khach' là LƯỢT khách cộng qua các ngày, KHÔNG phải số người riêng
+         biệt: một người bị bắt 3 ngày thì đếm 3 lượt. Nói rõ để model không
+         diễn giải thành 'có bấy nhiêu khách hàng'. */
+      _ghi_chu: idx === null || idx.length === 1 ? undefined
+        : "'khach' là LƯỢT (khách × ngày) cộng qua " + idx.length +
+          " ngày, không phải số người riêng biệt.",
+      so_ngay_trong_pham_vi: idx === null ? d.tong.nd : idx.length,
       tong_alert_pham_vi: tong,
       so_kich_ban_co_alert: ds.length,
       danh_sach: ds.slice(0, n).map(function (k, i) {
@@ -553,14 +625,25 @@ window.F2TriThuc = (function () {
 
   H.thong_ke_nhom = function (ts) {
     var d = duLieu(); ts = ts || {};
-    var j = ts.ngay ? chiSoNgay(ts.ngay) : null;
-    var tong = j === null ? d.tong.alert : d.ngay[j].alert;
-    var tongKh = j === null ? d.tong.kh : d.ngay[j].kh;
+    var idx = chiSoKhoang(ts);
+    var tong = idx === null ? d.tong.alert
+      : idx.reduce(function (a, j) { return a + d.ngay[j].alert; }, 0);
+    var tongKh = idx === null ? d.tong.kh
+      : idx.reduce(function (a, j) { return a + d.ngay[j].kh; }, 0);
     var ds = d.nhom.map(function (n) {
-      var g = j === null ? null : (n.ng || {})[j];
-      var al = j === null ? n.alert : (g ? g[0] : 0);
-      var kh = j === null ? n.kh : (g ? g[1] : 0);
-      var kb = j === null ? n.kb : (g ? g[2] : 0);
+      var al = 0, kh = 0, kb = 0;
+      if (idx === null) { al = n.alert; kh = n.kh; kb = n.kb; }
+      else {
+        /* Cộng qua từng ngày trong khoảng. Riêng 'kịch bản có alert' thì
+           lấy MAX chứ không cộng — cộng lại thì một kịch bản nổ cả 30 ngày
+           hoá thành 30 kịch bản. */
+        for (var i = 0; i < idx.length; i++) {
+          var g = (n.ng || {})[idx[i]];
+          if (!g) continue;
+          al += g[0]; kh += g[1];
+          if (g[2] > kb) kb = g[2];
+        }
+      }
       return {
         nhom: n.ten, alert: al, khach: kh,
         kich_ban_co_alert: kb, kich_ban_cau_hinh: n.kbTong,
@@ -569,12 +652,18 @@ window.F2TriThuc = (function () {
       };
     }).sort(function (a, b) { return b.alert - a.alert; });
     return {
-      _mo_ta: "Thống kê " + d.nhom.length + " nhóm nghiệp vụ, " + phamVi(ts.ngay),
+      _mo_ta: "Thống kê " + d.nhom.length + " nhóm nghiệp vụ, " +
+              moTaKhoang(ts, idx),
+      so_ngay_trong_pham_vi: idx === null ? d.tong.nd : idx.length,
       tong_alert_pham_vi: tong,
       tong_khach_pham_vi: tongKh,
       danh_sach: ds,
       ghi_chu: "Khách hàng KHÔNG cộng ngang các nhóm được — một khách dính " +
-               "hai nhóm vẫn chỉ là một người."
+               "hai nhóm vẫn chỉ là một người." +
+               (idx !== null && idx.length > 1
+                 ? " Với khoảng nhiều ngày, 'khach' là LƯỢT (khách × ngày), " +
+                   "không phải số người riêng biệt."
+                 : "")
     };
   };
 
@@ -1016,7 +1105,7 @@ window.F2TriThuc = (function () {
     so_sanh_ngay: "So hai ngày với nhau. Tham số: ngay_a, ngay_b (YYYY-MM-DD)",
     gom_theo_ky: "Gom alert theo TUẦN hoặc THÁNG, kèm % so kỳ liền trước. " +
       "Dùng khi hỏi xu hướng dài hơn một ngày. Tham số: muc = 'tuan' | 'thang'",
-    top_kich_ban: "Kịch bản nhiều alert nhất. Tham số: n, ngay, nhom",
+    top_kich_ban: "Kịch bản nhiều alert nhất. Tham số: n (mặc định 10), nhom, và MỘT trong hai cách chọn thời gian: ngay=YYYY-MM-DD (một ngày) HOẶC tu + den (khoảng ngày, vd tu=2026-08-01 den=2026-08-31). Không truyền gì = toàn kỳ",
     chi_tiet_kich_ban: "Hồ sơ đầy đủ một kịch bản. Tham số: ten",
     kich_ban_dot_bien: "Kịch bản có ngày vọt hẳn. Tham số: nguong",
     kich_ban_ban_day: "Kịch bản nhiều alert mỗi khách. Tham số: nguong",
@@ -1024,7 +1113,7 @@ window.F2TriThuc = (function () {
     kich_ban_im_lang_trong_ngay: "Kịch bản có alert đều cả kỳ nhưng im hẳn MỘT ngày — lời giải cho 'sao ngày X ít alert'. Tham số: ngay",
     xu_huong_kich_ban: "Kịch bản đang tăng hay giảm. Tham số: ten",
     ma_tran_kich_ban_ngay: "Ma trận kịch bản × ngày. Tham số: so_ngay, top",
-    thong_ke_nhom: "Alert/khách/kịch bản theo nhóm nghiệp vụ. Tham số: ngay",
+    thong_ke_nhom: "Alert/khách/kịch bản theo nhóm nghiệp vụ. Tham số: ngay (một ngày) hoặc tu + den (khoảng ngày). Không truyền = toàn kỳ",
     nhom_im_lang: "Nhóm nghiệp vụ không có alert nào",
     nhom_theo_ngay: "Một nhóm biến động qua các ngày. Tham số: nhom",
     hanh_vi_theo_cum_diem: "Khách trong MỘT KHOẢNG ĐIỂM IMPACT thì hành vi ra sao: dính kịch bản nào, tổ hợp nào, lặp mấy lần, kịch bản nào đặc trưng cho khoảng đó. Tham số: tu + den (điểm của KHÁCH, 0-100) HOẶC muc ('Low'/'Medium'/'High'/'Very High'), thêm ngay nếu chỉ xét một ngày. LƯU Ý: 'điểm' ở đây là điểm Impact của KHÁCH trong một ngày — KHÁC hẳn 'điểm gốc' của kịch bản. Hỏi 'khách 80-82 điểm làm gì' thì dùng hàm này, đừng tra điểm gốc kịch bản.",

@@ -15,7 +15,7 @@
   var nut = $("f2-nut"), panel = $("f2-panel"), tin = $("f2-tin"),
       o = $("f2-o"), gui = $("f2-gui"), goiy = $("f2-goiy"),
       chip = $("f2-chip"), phu = $("f2-phu"), conlai = $("f2-conlai"),
-      thu = $("f2-thu");
+      thu = $("f2-thu"), phong = $("f2-phong");
 
   /* Dashboard đang nằm trong iframe của trang khác (bản deploy trên
      Streamlit) thì góc phải dưới không còn là của mình: huy hiệu Streamlit
@@ -55,9 +55,56 @@
     });
     s = s.replace(/`([^`\n]+)`/g, "<code>$1</code>");
     s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    /* Nghiêng: phải chạy SAU đậm, không thì cặp ** bị nuốt mất một sao.
+       Đòi hai đầu dính chữ để dấu sao trong công thức không thành thẻ. */
+    s = s.replace(/(^|[\s(>])\*([^*\n]+)\*(?=$|[\s.,;:)!?])/g,
+                  "$1<em>$2</em>");
 
     var dong = s.split("\n"), ra = [], trongDs = false;
     for (var i = 0; i < dong.length; i++) {
+
+      /* Bảng markdown: dòng | … | rồi dòng phân cách |:---|---:| rồi thân.
+         Model rất hay trả lời dạng bảng khi được hỏi "top 5"; không dựng
+         thành <table> thì nó đổ ra một mớ gạch đứng, đọc không nổi. */
+      if (/^\s*\|.*\|\s*$/.test(dong[i]) &&
+          i + 1 < dong.length &&
+          /^\s*\|[\s:\-|]+\|\s*$/.test(dong[i + 1])) {
+        if (trongDs) { ra.push("</ul>"); trongDs = false; }
+
+        var o = function (d) {                 // tách ô, bỏ | ở hai đầu
+          return d.replace(/^\s*\||\|\s*$/g, "").split("|")
+                  .map(function (x) { return x.trim(); });
+        };
+        /* Cột căn phải nếu dấu phân cách có dạng ---: — số liệu căn phải
+           mới so sánh được bằng mắt. */
+        var canh = o(dong[i + 1]).map(function (x) {
+          return /^:?-+:$/.test(x) ? "center" : /-+:$/.test(x) ? "right" : "left";
+        });
+        var dau = o(dong[i]), than = [], j = i + 2;
+        while (j < dong.length && /^\s*\|.*\|\s*$/.test(dong[j])) {
+          than.push(o(dong[j])); j++;
+        }
+
+        var t = ['<div class="f2-bang-bao"><table class="f2-bang"><thead><tr>'];
+        dau.forEach(function (c, k) {
+          t.push('<th style="text-align:' + (canh[k] || "left") + '">' + c + "</th>");
+        });
+        t.push("</tr></thead><tbody>");
+        than.forEach(function (h) {
+          t.push("<tr>");
+          for (var k = 0; k < dau.length; k++)
+            t.push('<td style="text-align:' + (canh[k] || "left") + '">' +
+                   (h[k] || "") + "</td>");
+          t.push("</tr>");
+        });
+        t.push("</tbody></table></div>");
+
+        kho.push(t.join(""));
+        ra.push("\u0000" + (kho.length - 1) + "\u0000");
+        i = j - 1;
+        continue;
+      }
+
       var m = dong[i].match(/^\s*[-*•]\s+(.*)$/);
       if (m) {
         if (!trongDs) { ra.push("<ul>"); trongDs = true; }
@@ -75,8 +122,18 @@
          .replace(/(<\/?(?:ul|li|pre)>)(\s*<br>)+/g, "$1")
          .replace(/<p><ul>/g, "<ul>").replace(/<\/ul><\/p>/g, "</ul>")
          .replace(/<p>\s*<\/p>/g, "");
-    kho.forEach(function (k, j) { s = s.replace("\u0000" + j + "\u0000", k); });
-    return s.replace(/<p><pre>/g, "<pre>").replace(/<\/pre><\/p>/g, "</pre>");
+    /* Bảng và khối code đứng riêng một dòng nên hay bị <br> kẹp hai bên —
+       gỡ trước khi trả chỗ giữ về, không thì dôi ra một dòng trống. */
+    s = s.replace(/(<br>\s*)+(\u0000\d+\u0000)/g, "$2")
+         .replace(/(\u0000\d+\u0000)(\s*<br>)+/g, "$1");
+    kho.forEach(function (k, j) {
+      /* Truyền hàm chứ không truyền chuỗi: nội dung bảng có thể chứa "$&",
+         đưa thẳng vào replace thì bị hiểu thành ký hiệu đặc biệt. */
+      s = s.replace("\u0000" + j + "\u0000", function () { return k; });
+    });
+    return s.replace(/<p><pre>/g, "<pre>").replace(/<\/pre><\/p>/g, "</pre>")
+            .replace(/<p>(<div class="f2-bang-bao">)/g, "$1")
+            .replace(/(<\/table><\/div>)<\/p>/g, "$1");
   }
 
   function thoat(s) {
@@ -454,6 +511,30 @@
 
   nut.onclick = mo;
   thu.onclick = thuLai;
+
+  /* Phong to / thu nho khung chat.
+     Bang bay tam cot khong the vua trong panel 412px. Nho lua chon lai:
+     ai da phong to mot lan thi lan sau mo chat van thay khung to, khoi phai
+     bam lai moi lan. localStorage co the bi chan (che do rieng tu) nen boc
+     try -- hong cai nay khong duoc lam hong nut. */
+  var KHOA_TO = "f2_chat_to";
+  function datTo(to, ghi) {
+    panel.classList.toggle("f2-to", to);
+    phong.textContent = to ? "⤡" : "⤢";
+    phong.title = to ? "Thu nho khung chat" : "Phong to khung chat";
+    phong.setAttribute("aria-label", phong.title);
+    phong.setAttribute("aria-pressed", to ? "true" : "false");
+    if (ghi) { try { localStorage.setItem(KHOA_TO, to ? "1" : "0"); } catch (e) {} }
+    /* Doi be ngang xong, cho trinh duyet dan lai roi moi keo xuong day --
+       khong thi cuon theo chieu cao cu, hut mat may dong cuoi. */
+    setTimeout(cuonXuong, 0);
+  }
+  phong.onclick = function () {
+    datTo(!panel.classList.contains("f2-to"), true);
+  };
+  try {
+    if (localStorage.getItem(KHOA_TO) === "1") datTo(true, false);
+  } catch (e) {}
 
   /* Bam ra ngoai khung chat thi tu thu lai. Panel che han phan phai cua
      dashboard, ma thao tac ke tiep cua nguoi dung gan nhu luon la doc bang

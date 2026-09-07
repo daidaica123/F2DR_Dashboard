@@ -692,6 +692,91 @@ window.F2BoNao = (function () {
      có thể sai — mà sai lệnh lái thì trang nhảy lung tung.
 
      Trả về { lenh: [...], toSang: [tên kịch bản...] } hoặc null. */
+  /* ═══════════════ KIỂM CHỨNG KẾT LUẬN ═══════════════
+     Lớp kiemSo chỉ soi CON SỐ. Nhưng lỗi nguy hiểm nhất không phải sai số
+     — mà là số đúng, kết luận ngược.
+
+     Đã mắc thật: kịch bản có "10% khách đông nhất chiếm 33,1%" (tức RẢI
+     ĐỀU) mà model viết "đang dồn vào một nhóm khách hàng nhỏ". Bảy con số
+     đều truy được nên nhãn "✓ đã đối chiếu" vẫn sáng — người đọc tin chắc
+     vào một kết luận ngược hẳn.
+
+     Cách chặn: hàm truy vấn trả kèm trường _nhan_dinh / muc_do_* đã tính
+     sẵn. Ở đây quét câu trả lời, nếu thấy từ TRÁI NGHĨA với nhận định thì
+     báo. Chỉ báo khi chắc chắn — thà bỏ sót còn hơn gắn cờ oan. */
+  var DOI_NGHIA = [
+    { co: /DỒN CỤC|KHÁ TẬP TRUNG/i,
+      cam: /(rải\s*(đều|rác)|không\s*(tập trung|dồn)|phân tán|dàn trải)/i,
+      loi: "dữ kiện nói DỒN CỤC nhưng câu trả lời viết là rải đều" },
+    { co: /RẢI ĐỀU/i,
+      cam: /(dồn\s*(vào|cục)|tập trung\s*(cao|vào|mạnh)|vào\s*(một\s*)?nhóm\s*(khách\s*hàng\s*)?nhỏ|một nhúm)/i,
+      loi: "dữ kiện nói RẢI ĐỀU nhưng câu trả lời viết là dồn vào nhóm nhỏ" }
+  ];
+
+  function kiemKetLuan(van, duKien) {
+    var la = [];
+    try {
+      var moc = JSON.stringify(duKien || []);
+      /* Bỏ phần model TRÍCH NGUYÊN nhận định của dữ kiện trước khi soi.
+         Nhận định "RẢI ĐỀU (không dồn vào nhóm nhỏ)" có chứa đúng cụm
+         "dồn vào nhóm nhỏ" — soi cả câu thì bắt oan chính câu trả lời
+         ĐÚNG. Đã mắc: bot nói đúng mà vẫn bị gắn cờ. */
+      var sach = van
+        .replace(/RẢI ĐỀU\s*\([^)]*\)/gi, "")
+        .replace(/DỒN CỤC\s*\([^)]*\)/gi, "")
+        .replace(/KHÁ TẬP TRUNG|TRUNG BÌNH/gi, "")
+        /* Xoá luôn cả cụm PHỦ ĐỊNH: "không dồn vào nhóm nhỏ" là câu ĐÚNG
+           khi dữ kiện nói RẢI ĐỀU. Xoá hẳn chắc ăn hơn lookbehind — đã thử
+           lookbehind và nó vẫn bắt oan. */
+        .replace(/(không|chưa|chẳng)\s+(dồn|tập trung)[^.,;]*/gi, "");
+      /* CHỈ kiểm khi dữ kiện thuần MỘT loại nhận định.
+         Danh sách nhiều kịch bản thì có cả DỒN CỤC lẫn RẢI ĐỀU cùng lúc —
+         câu trả lời nhắc cả hai là ĐÚNG, mà bộ kiểm lại thấy "rải đều"
+         đứng cạnh dữ kiện "DỒN CỤC" nên báo oan. Đã mắc ở câu xếp hạng
+         ưu tiên: trả lời chuẩn vẫn bị gắn cờ.
+         Lẫn lộn thì bỏ qua — thà sót còn hơn gắn cờ sai, vì cờ sai làm
+         người đọc nghi ngờ một câu trả lời vốn đúng. */
+      var coDon = /DỒN CỤC|KHÁ TẬP TRUNG/.test(moc);
+      var coRai = /RẢI ĐỀU/.test(moc);
+      if (coDon && coRai) return la;
+
+      DOI_NGHIA.forEach(function (r) {
+        if (r.co.test(moc) && r.cam.test(sach)) la.push(r.loi);
+      });
+    } catch (e) { /* hỏng thì coi như không có gì để báo */ }
+    return la;
+  }
+
+  /* Câu nối tiếp dùng đại từ ("cái đó", "cái thứ 2", "nó") mà câu trước
+     KHÔNG hề nêu danh sách -> model sẽ tự dựng ra một danh sách không có
+     thật. Đã mắc: hỏi "cái thứ 2 trong danh sách đó" sau một câu chỉ nêu
+     một kịch bản, model bịa ra "top 10". */
+  function thieuNguCanh(cauHoi, lichSu) {
+    try {
+      /* BỎ DẤU trước khi so. Người dùng gõ tắt không dấu rất nhiều
+         ("cai thu 2 trong danh sach do"), mà regex viết có dấu thì không
+         khớp gì cả — bộ chặn coi như không tồn tại. Đã mắc đúng lỗi này. */
+      var c = String(cauHoi || "").normalize("NFD")
+                .replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d")
+                .toLowerCase();
+      var daiTu = /(cai|thu|so)\s*(do|nay|[2-9]|hai|ba|bon|nam)\b|\bdanh sach (do|tren|nay)\b|\btrong do\b/;
+      if (!daiTu.test(c)) return null;
+      if (!lichSu || !lichSu.length) {
+        return "Bạn đang nhắc tới một mục trong danh sách, nhưng đây là " +
+               "câu hỏi đầu tiên nên tôi chưa đưa ra danh sách nào.";
+      }
+      var truoc = lichSu[lichSu.length - 1].dap || "";
+      /* Có danh sách thật thì phải có ít nhất 2 dòng đánh số hoặc gạch đầu
+         dòng. Chỉ một mục thì "cái thứ 2" là vô nghĩa. */
+      var soMuc = (truoc.match(/^\s*(\d+[.)]|[-*•])\s+/gm) || []).length;
+      if (soMuc < 2) {
+        return "Câu trả lời trước của tôi chỉ nêu một mục, chưa phải là " +
+               "danh sách — nên tôi không rõ bạn đang hỏi về mục nào.";
+      }
+      return null;
+    } catch (e) { return null; }
+  }
+
   function suyLenhLai(R) {
     try {
       if (!window.F2Lai || !window.F2Lai.dungDuoc()) return null;
@@ -941,6 +1026,15 @@ TT.moTaKy() + "\n\n" + QUY_TAC + "\n\n" + GIOI_HAN + "\n\n" +
 "NGUYÊN TẮC LẬP KẾ HOẠCH:\n" +
 "  - Câu hỏi \"vì sao / sao lại / nguyên nhân\" thường cần 2-3 bước: xác nhận\n" +
 "    hiện tượng trước, rồi mới đào xuống tìm cái gì thay đổi.\n" +
+"    Tìm ra kịch bản gây ra rồi thì ĐI THÊM MỘT BƯỚC: gọi\n" +
+"    do_tap_trung_kich_ban cho chính kịch bản đó — dồn vào vài khách bắn\n" +
+"    dày hay lan ra nhiều khách mới là hai nguyên nhân khác hẳn nhau.\n" +
+"  - Câu hỏi PHÁN ĐOÁN (\"nên ưu tiên gì\", \"có đáng lo không\", \"cái nào\n" +
+"    nghiêm trọng\") phải gọi ÍT NHẤT 2 hàm trước khi kết luận. Chọn theo\n" +
+"    mỗi số alert là hỏng: rule quét rộng bắn 30 nghìn alert rải đều thì\n" +
+"    không cho đầu mối nào, còn 500 alert dồn vào 3 khách là điều tra được\n" +
+"    ngay. Dùng uu_tien_dieu_tra hoặc danh_gia_kich_ban — chúng đã cân sẵn\n" +
+"    4 yếu tố.\n" +
 "  - Câu hỏi đơn giản (\"bao nhiêu alert\") chỉ cần 1 bước rồi du_roi.\n" +
 "  - Đã chạy " + cacBuoc.length + " bước. Tối đa " + SO_VONG_TOI_DA +
 " bước. Đủ dữ kiện thì dừng lại ngay.";
@@ -990,6 +1084,16 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
 "  - Trả lời thẳng vào câu hỏi ngay câu đầu tiên.\n" +
 "  - Mọi con số bạn viết PHẢI có trong dữ kiện trên. Tuyệt đối không tự tính\n" +
 "    thêm, không làm tròn khác đi, không ước lượng.\n" +
+"  - Dữ kiện có trường nhận định sẵn (muc_do_tap_trung, PHAN_QUYET,\n" +
+"    DA_HIEN_TAI, nhan_dinh_*) thì DÙNG ĐÚNG chữ trong đó. Không tự diễn\n" +
+"    giải con số theo cảm tính: 33% mà viết thành 'dồn vào nhóm nhỏ' là\n" +
+"    SAI HẲN, dù con số 33% có thật.\n" +
+"  - MỖI CÂU CHỈ MỘT CON SỐ. Nhồi nhiều tỉ lệ vào một câu thì không ai đọc\n" +
+"    ra: 'chiếm 85,1% tỷ lệ alert từ 10% khách hàng đóng góp nhiều nhất' là\n" +
+"    câu hỏng. Tách ra, và nói rõ số đó là % của cái gì.\n" +
+"  - Một danh sách phủ gần hết tổng thể thì phải nói thẳng điều đó, đừng\n" +
+"    trình bày như phát hiện: '35/38 kịch bản có đột biến' nghĩa là ngưỡng\n" +
+"    quá rộng nên chỉ số này không phân biệt được gì, phải nói ra.\n" +
 "  - Ngắn gọn, giống đồng nghiệp nói chuyện. Không mở đầu khách sáo.\n" +
 "  - Dùng Markdown: **đậm** cho số quan trọng, gạch đầu dòng khi liệt kê.\n" +
 "  - Chỉ nêu thêm một điều đáng chú ý khi nó LIÊN QUAN TRỰC TIẾP tới câu\n" +
@@ -1079,6 +1183,13 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
     return v + "\n\nGOI_Y: " + gy.slice(0, 3).join(" | ");
   }
 
+  /* ───────── LỜI TỪ CHỐI THEO LOẠI ─────────
+     Trước đây mọi câu không trả lời được đều nhận CÙNG một lời từ chối
+     ("File alert chỉ ghi lại cảnh báo đã bắn…"). Hỏi về dự báo tương lai
+     cũng nhận câu đó — lạc đề; hỏi về công thức điểm cũng nhận câu đó —
+     mà công thức thì CÓ, nên từ chối sai hẳn.
+
+     Bốn khuôn, mỗi khuôn nói đúng lý do thật và gợi việc làm được thay thế. */
   var NGOAI_PHAM_VI =
     "Dữ liệu không có **{X}**, nên tôi không trả lời được câu này.\n\n" +
     "File alert chỉ ghi lại *cảnh báo đã bắn*, không theo dõi việc xử lý sau " +
@@ -1089,6 +1200,40 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
     "nhất, kịch bản đột biến hay im lặng.\n\n" +
     "GOI_Y: Kịch bản nào nhiều alert nhất | Ngày nào bất thường | " +
     "Khách nào bị bắn nhiều nhất";
+
+  var TU_CHOI_DU_BAO =
+    "Dữ liệu chỉ ghi lại những gì **đã xảy ra**, không dự báo được tương " +
+    "lai — nên tôi không nói được tuần tới hay tháng tới sẽ thế nào.\n\n" +
+    "Thứ tôi làm được là mô tả **đà gần đây** để bạn tự suy xét: alert " +
+    "mấy ngày qua đang tăng, giảm hay đi ngang, kịch bản nào đang nóng lên.\n\n" +
+    "GOI_Y: Đà alert 14 ngày gần nhất | Kịch bản nào đang tăng mạnh | " +
+    "So tháng này với tháng trước";
+
+  var TU_CHOI_NGOAI_KY =
+    "Ngày bạn hỏi nằm **ngoài kỳ dữ liệu** hiện có ({X}).\n\n" +
+    "Lưu ý: đây là *chưa có dữ liệu*, **không phải** ngày đó không có alert " +
+    "nào — hai chuyện khác hẳn nhau.\n\n" +
+    "GOI_Y: Kỳ dữ liệu hiện tại là gì | Ngày gần nhất có dữ liệu | " +
+    "Đà alert những ngày cuối kỳ";
+
+  /* Chọn khuôn từ chối đúng loại. Bỏ dấu trước khi so vì người dùng gõ
+     tắt rất nhiều ("tuan toi the nao"). */
+  function loaiTuChoi(cauHoi, thieuGi) {
+    var c = String(cauHoi || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+              .replace(/đ/gi, "d").toLowerCase();
+    if (/(du bao|se (tang|giam|the nao|ra sao)|tuan toi|thang toi|ngay mai|sap toi|tuong lai|forecast|predict)/.test(c)) {
+      return TU_CHOI_DU_BAO;
+    }
+    try {
+      var d = TT.duLieu();
+      if (/ngay|thang \d|\d{1,2}\/\d{1,2}/.test(c) &&
+          /(ngoai ky|khong co du lieu|chua co)/.test(String(thieuGi || "").toLowerCase())) {
+        return TU_CHOI_NGOAI_KY.replace("{X}",
+          d.tong.d0 + " – " + d.tong.d1 + ", " + d.tong.nd + " ngày");
+      }
+    } catch (e) { /* không lấy được kỳ thì dùng khuôn chung */ }
+    return NGOAI_PHAM_VI.replace("{X}", thieuGi);
+  }
 
   var NGOAI_CHU_DE =
     "Tôi chỉ trả lời về **dữ liệu alert F2DR** của kỳ này — kịch bản, ngày, " +
@@ -1139,6 +1284,22 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
     if (loiXaGiao) {
       R.dap = loiXaGiao;
       R.xaGiao = true;
+      khongCanDoiChieu(R);
+      R.giay = (Date.now() - t0) / 1000;
+      return Promise.resolve(R);
+    }
+
+    /* Câu nối tiếp trỏ vào một danh sách KHÔNG có thật -> hỏi lại thay vì
+       để model tự bịa ra danh sách. Chặn bằng luật ở đây, không đưa xuống
+       cho model quyết: nó gần như luôn chọn cách dựng đại một danh sách
+       nghe hợp lý. */
+    var thieu = thieuNguCanh(cauHoi, lichSu);
+    if (thieu) {
+      ghiLog("Thiếu ngữ cảnh: " + thieu.slice(0, 60));
+      R.dap = thieu + "\n\nBạn muốn xem danh sách nào? Ví dụ: *top kịch " +
+              "bản nhiều alert nhất*, *top khách hàng*, hoặc *các nhóm " +
+              "nghiệp vụ*.";
+      R.thieuNguCanh = true;
       khongCanDoiChieu(R);
       R.giay = (Date.now() - t0) / 1000;
       return Promise.resolve(R);
@@ -1358,7 +1519,10 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
         return R;
       }
       if (ngoaiPhamVi && !R.duKien.length) {
-        R.dap = NGOAI_PHAM_VI.replace("{X}", ngoaiPhamVi);
+        /* Chọn đúng khuôn theo LOẠI câu hỏi, không dùng chung một câu cho
+           mọi thứ. Hỏi dự báo mà nhận lời giải thích về trường dữ liệu
+           thì lạc đề hoàn toàn. */
+        R.dap = loaiTuChoi(cauHoi, ngoaiPhamVi);
         khongCanDoiChieu(R);
         R.giay = (Date.now() - t0) / 1000;
         return R;
@@ -1380,6 +1544,12 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
           R.soLanGoiLLM++;
           R.dap = van;
           R.kiemChung = kiemSo(van, nenKiem);
+          /* Số đúng chưa đủ — kết luận cũng phải khớp dữ kiện. */
+          R.laKetLuan = kiemKetLuan(van, R.duKien);
+          if (R.laKetLuan.length) {
+            R.canhBao.push("Kết luận lệch dữ kiện: " + R.laKetLuan.join("; "));
+            ghiLog("!! " + R.laKetLuan[0]);
+          }
           if (R.kiemChung.dat) return;
 
           ghiLog("Kiểm chứng: " + R.kiemChung.soLa.length +
@@ -1389,6 +1559,7 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
             .then(function (van2) {
               R.soLanGoiLLM++;
               var lan2 = kiemSo(van2, nenKiem);
+              R.laKetLuan = kiemKetLuan(van2, R.duKien);
               if (lan2.dat) { R.dap = van2; R.kiemChung = lan2; return; }
 
               /* Hình phạt phải tương xứng với lỗi.

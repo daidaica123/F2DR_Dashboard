@@ -270,6 +270,10 @@
          đó chỉ làm người đọc nghi ngờ một con số vốn chắc chắn đúng. */
       the.push(["canh", "⚠ không đối chiếu được số nào"]);
     }
+    /* Kết luận lệch dữ kiện — nguy hiểm hơn sai số, vì số vẫn đúng nên
+       nhãn "đã đối chiếu" vẫn sáng. Phải nói rõ ngay cạnh nó. */
+    if (R.laKetLuan && R.laKetLuan.length)
+      the.push(["canh", "⚠ kết luận lệch dữ kiện"]);
     if (R.cacBuoc && R.cacBuoc.length)
       the.push(["", R.cacBuoc.length + " bước"]);
     the.push(["", (R.giay || 0).toFixed(1) + "s"]);

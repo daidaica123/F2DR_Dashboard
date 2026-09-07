@@ -1218,16 +1218,42 @@ window.F2TriThuc = (function () {
         tong_alert: tong, so_khach: v.length,
         alert_moi_khach: lam(tong / v.length, 1),
         khach_nang_nhat: v[0],
-        ty_le_alert_tu_10pc_khach_dong_nhat: lam(tongTop / tong * 100, 1)
+        ty_le_alert_tu_10pc_khach_dong_nhat: lam(tongTop / tong * 100, 1),
+        /* NHẬN ĐỊNH TÍNH SẴN — model phải dùng đúng chữ này, không được
+           tự diễn giải con số.
+           Đã mắc lỗi thật: kịch bản có 33,1% (tức RẢI ĐỀU) mà model viết
+           thành "đang dồn vào một nhóm khách nhỏ" — số đúng, kết luận
+           ngược, lại kèm nhãn "đã đối chiếu" nên nghe rất chắc.
+           Mốc lấy từ phân bố thực tế của bảng này: phần lớn kịch bản nằm
+           60–96%, nên dưới 45% là rải đều thật sự. */
+        muc_do_tap_trung: (function (t) {
+          return t >= 80 ? "DỒN CỤC (rất tập trung vào ít khách)"
+               : t >= 60 ? "KHÁ TẬP TRUNG"
+               : t >= 45 ? "TRUNG BÌNH"
+               : "RẢI ĐỀU (không dồn vào nhóm nhỏ)";
+        })(lam(tongTop / tong * 100, 1))
       };
     }).filter(Boolean);
+
+    /* Mốc của cả bảng: một con số trần trụi thì không biết cao hay thấp.
+       Có trung vị để đối chiếu thì model mới nói đúng "cao hơn/thấp hơn
+       mặt bằng" thay vì đoán. */
+    var tyLe = ra.map(function (x) {
+      return x.ty_le_alert_tu_10pc_khach_dong_nhat;
+    }).sort(function (a, b) { return a - b; });
+    var trungVi = tyLe.length
+      ? lam(tyLe[Math.floor(tyLe.length / 2)], 1) : null;
 
     if (ten) {
       var mot = ra.filter(function (x) {
         return x.kich_ban.toLowerCase().indexOf(ten.toLowerCase()) >= 0;
       });
       return { _mo_ta: "Độ tập trung của kịch bản khớp '" + ten + "'",
-               danh_sach: mot };
+               danh_sach: mot,
+               trung_vi_toan_bang: trungVi,
+               _ghi_chu: "So với trung vị " + trungVi + "% của toàn bảng. " +
+                 "PHẢI dùng đúng chữ trong muc_do_tap_trung, không tự diễn " +
+                 "giải con số theo cảm tính." };
     }
     ra.sort(function (a, b) {
       return b.ty_le_alert_tu_10pc_khach_dong_nhat -
@@ -1236,9 +1262,12 @@ window.F2TriThuc = (function () {
     return {
       _mo_ta: "Kịch bản nào dồn alert vào ít khách nhất (xếp giảm dần)",
       danh_sach: ra.slice(0, Math.max(1, Math.min(+ts.n || 12, 38))),
+      trung_vi_toan_bang: trungVi,
       _ghi_chu: "Tỉ lệ càng cao = alert càng dồn vào một nhúm khách. " +
-        "Trên 60% thường là vài đối tượng bắn liên tục, đáng điều tra hơn " +
-        "rule quét rộng."
+        "Trung vị toàn bảng là " + trungVi + "%. " +
+        "PHẢI dùng đúng chữ trong muc_do_tap_trung của từng dòng — không " +
+        "được tự diễn giải con số. Dưới 45% là RẢI ĐỀU, đừng gọi là 'dồn " +
+        "vào nhóm nhỏ'."
     };
   };
 
@@ -1314,6 +1343,318 @@ window.F2TriThuc = (function () {
     };
   };
 
+  /* ══════════════════ TÍNH ĐIỂM GIẢ ĐỊNH ══════════════════
+     "Khách dính 3 kịch bản Low thì mấy điểm?" — trước đây bot từ chối vì
+     tưởng không có công thức, trong khi diemLuot() nằm ngay trong file này
+     và dashboard có hẳn mục ⓪ giải thích công thức. Đó là lỗ to với một
+     dashboard xoay quanh chấm điểm. */
+  H.tinh_diem_gia_dinh = function (ts) {
+    ts = ts || {};
+    var d = duLieu(), p = thamSoDiem();
+    var ds = ts.kich_ban || ts.danh_sach || [];
+    if (typeof ds === "string") ds = [{ ten: ds, so_lan: 1 }];
+    if (!ds.length) {
+      return { _mo_ta: "Thiếu dữ kiện",
+        _loi: "Cần danh sách kịch bản. Ví dụ: kich_ban=[{ten:'...', " +
+              "so_lan:2}] hoặc muc='Low' + so_kich_ban=3 để lấy kịch bản " +
+              "đại diện của mức đó." };
+    }
+
+    var picks = [], chiTiet = [], thieu = [];
+    ds.forEach(function (x) {
+      var ten = typeof x === "string" ? x : (x.ten || x.kich_ban);
+      var lan = Math.max(1, +(x.so_lan || x.lan || 1));
+      var i = timKb(d, ten);
+      if (i < 0) { thieu.push(ten); return; }
+      picks.push(i, lan);
+      var kb = d.kb[i];
+      chiTiet.push({
+        kich_ban: kb.ten, muc: kb.lv, diem_goc: kb.sc, tran_diem: kb.cap,
+        so_lan: lan,
+        hieu_luc: lam(hieuLuc(kb.sc, kb.cap, lan, p.r), 2)
+      });
+    });
+
+    if (!picks.length) {
+      return { _mo_ta: "Không tìm thấy kịch bản nào khớp",
+               _loi: "Không có kịch bản nào tên giống: " + thieu.join(", ") };
+    }
+
+    var diem = chuanDiem(diemLuot(picks, p.r, p.k));
+    var muc = ["Low", "Medium", "High", "Very High"][mucDiem(diem, p.nguong)];
+    return {
+      _mo_ta: "Điểm giả định cho một khách dính " + chiTiet.length +
+              " kịch bản trong CÙNG MỘT NGÀY",
+      tham_so_dang_dat: { r: p.r, k: p.k, nguong: p.nguong },
+      cac_kich_ban: chiTiet,
+      diem: lam(diem, 1),
+      muc_impact: muc,
+      khong_tim_thay: thieu.length ? thieu : undefined,
+      _ghi_chu: "Công thức PP-D hai tầng: mỗi kịch bản cho hiệu lực " +
+        "e = tran - (tran-goc)*r^(n-1); rồi score = M + (100-M)*k*" +
+        "(1-tích(1-e/100)) với M là hiệu lực lớn nhất. Điểm tính THEO NGÀY, " +
+        "không cộng dồn qua các ngày."
+    };
+  };
+
+  /* Vì sao khách X ngày Y được chừng đó điểm — phân rã từng kịch bản. */
+  H.giai_thich_diem = function (ts) {
+    ts = ts || {};
+    var d = duLieu(), p = thamSoDiem();
+    var ma = String(ts.ma_khach || ts.ma || "").trim();
+    if (!ma) return { _mo_ta: "Thiếu mã khách", _loi: "Cần tham số ma_khach" };
+
+    var ket = [];
+    for (var i = 0; i < d.picks.length; i++) {
+      if (d.luotKh[i] !== ma) continue;
+      if (ts.ngay && d.days[d.luotNg[i]] !== chuanNgayTs(ts.ngay)) continue;
+      var pk = d.picks[i], ct = [];
+      for (var w = 0; w < pk.length; w += 2) {
+        var kb = d.kb[pk[w]];
+        ct.push({ kich_ban: kb.ten, muc: kb.lv, diem_goc: kb.sc,
+                  tran_diem: kb.cap, so_lan: pk[w + 1],
+                  hieu_luc: lam(hieuLuc(kb.sc, kb.cap, pk[w + 1], p.r), 2) });
+      }
+      var s = chuanDiem(diemLuot(pk, p.r, p.k));
+      ket.push({
+        ngay: d.days[d.luotNg[i]], diem: lam(s, 1),
+        muc_impact: ["Low", "Medium", "High", "Very High"][mucDiem(s, p.nguong)],
+        so_alert_trong_ngay: d.luotAl[i],
+        cac_kich_ban: ct
+      });
+    }
+    if (!ket.length) {
+      return { _mo_ta: "Không có lượt nào",
+               _loi: "Không tìm thấy khách '" + ma + "'" +
+                     (ts.ngay ? " trong ngày " + ts.ngay : "") + "." };
+    }
+    ket.sort(function (a, b) { return b.diem - a.diem; });
+    return {
+      _mo_ta: "Phân rã điểm của khách " + ma + " (" + ket.length + " ngày)",
+      tham_so_dang_dat: { r: p.r, k: p.k, nguong: p.nguong },
+      so_ngay: ket.length,
+      diem_cao_nhat: ket[0].diem,
+      cac_ngay: ket.slice(0, Math.max(1, Math.min(+ts.n || 8, 30))),
+      _ghi_chu: "hieu_luc là đóng góp của từng kịch bản sau khi tính số lần " +
+        "lặp; điểm cuối gộp các hiệu lực đó theo công thức PP-D."
+    };
+  };
+
+  /* ══════════════════ XẾP HẠNG ƯU TIÊN ĐIỀU TRA ══════════════════
+     Trước đây hỏi "nên điều tra gì trước" thì bot chọn kịch bản nhiều alert
+     nhất, hết. Nhưng nhiều alert chưa chắc đáng điều tra: rule quét rộng
+     bắn 30 nghìn alert rải đều 5 nghìn khách thì không có đầu mối nào,
+     trong khi 511 alert dồn vào 3 khách là thứ điều tra được ngay.
+
+     Cho điểm theo BỐN yếu tố rồi cộng có trọng số, và trả về điểm từng
+     yếu tố để model giải thích được "vì sao", không phải chỉ đọc kết quả. */
+  H.uu_tien_dieu_tra = function (ts) {
+    ts = ts || {};
+    var d = duLieu();
+    var tap = H.do_tap_trung_kich_ban({ n: 99 });
+    var bangTap = {};
+    (tap.danh_sach || []).forEach(function (x) { bangTap[x.kich_ban] = x; });
+
+    /* Xu hướng: nửa sau kỳ so nửa đầu. Kịch bản đang nóng lên đáng soi
+       trước cái đã nguội. */
+    var nd = d.tong.nd, giua = Math.floor(nd / 2);
+    var maxAl = Math.max.apply(null, d.kb.map(function (k) { return k.alert; })) || 1;
+
+    var ds = d.kb.map(function (k) {
+      var dau = 0, sau = 0;
+      for (var i = 0; i < nd; i++) (i < giua ? (dau += k.v[i]) : (sau += k.v[i]));
+      var xu = dau > 0 ? (sau - dau) / dau * 100 : (sau > 0 ? 999 : 0);
+      var t = bangTap[k.ten] || {};
+      var tyTap = t.ty_le_alert_tu_10pc_khach_dong_nhat || 0;
+
+      /* Bốn điểm thành phần, mỗi cái 0-100 */
+      var eKhoiLuong = Math.min(100, k.alert / maxAl * 100);
+      var eTapTrung = Math.min(100, tyTap);
+      var eXuHuong = Math.max(0, Math.min(100, 50 + xu / 4));
+      var eMuc = { "Low": 20, "Medium": 50, "High": 80, "Very High": 100 }[k.lv] || 50;
+
+      /* Trọng số: mức rủi ro và độ tập trung nặng hơn khối lượng thô —
+         khối lượng lớn mà rải đều thì không cho đầu mối nào. */
+      var diem = eMuc * 0.35 + eTapTrung * 0.3 + eXuHuong * 0.2 +
+                 eKhoiLuong * 0.15;
+      return {
+        kich_ban: k.ten, nhom: k.nhom, muc: k.lv,
+        diem_uu_tien: lam(diem, 1),
+        tong_alert: k.alert, so_khach: k.kh,
+        do_tap_trung: tyTap ? lam(tyTap, 1) : null,
+        nhan_dinh_tap_trung: t.muc_do_tap_trung || null,
+        xu_huong_nua_sau_pc: lam(xu, 1),
+        vi_sao: [
+          "mức " + k.lv,
+          t.muc_do_tap_trung ? t.muc_do_tap_trung.split(" ")[0].toLowerCase() +
+            " (" + lam(tyTap, 1) + "%)" : null,
+          xu > 30 ? "đang tăng " + lam(xu, 0) + "%" :
+            xu < -30 ? "đang giảm " + lam(Math.abs(xu), 0) + "%" : null,
+          k.alert >= maxAl * 0.3 ? "khối lượng lớn (" + k.alert + ")" : null
+        ].filter(Boolean).join(", ")
+      };
+    }).filter(function (x) { return x.tong_alert > 0; });
+
+    ds.sort(function (a, b) { return b.diem_uu_tien - a.diem_uu_tien; });
+    return {
+      _mo_ta: "Xếp hạng ưu tiên điều tra — cân 4 yếu tố, không chỉ nhìn " +
+              "số alert",
+      cach_cham: "mức rủi ro 35% + độ tập trung 30% + xu hướng 20% + " +
+                 "khối lượng 15%",
+      danh_sach: ds.slice(0, Math.max(1, Math.min(+ts.n || 6, 20))),
+      _cach_tra_loi: "PHẢI nêu lý do theo trường vi_sao của từng kịch bản, " +
+        "đừng chỉ nói 'nhiều alert nhất'. Nếu người dùng hỏi 'vì sao', giải " +
+        "thích bằng 4 yếu tố trên."
+    };
+  };
+
+  /* "Cái này có đáng lo không" — trả về một phán quyết kèm mốc so sánh,
+     thay vì bắt model tự cảm nhận từ số trần trụi. */
+  H.danh_gia_kich_ban = function (ts) {
+    ts = ts || {};
+    var ten = String(ts.kich_ban || ts.ten || "").trim();
+    if (!ten) return { _mo_ta: "Thiếu tên kịch bản",
+                       _loi: "Cần tham số kich_ban" };
+    var d = duLieu();
+    var iKb = timKb(d, ten);
+    if (iKb < 0) return { _mo_ta: "Không tìm thấy",
+                          _loi: "Không có kịch bản nào tên giống '" + ten + "'" };
+    var kb = d.kb[iKb];
+
+    var uu = H.uu_tien_dieu_tra({ n: 99 });
+    var hang = -1, muc = null;
+    (uu.danh_sach || []).forEach(function (x, i) {
+      if (hang < 0 && x.kich_ban === kb.ten) { hang = i + 1; muc = x; }
+    });
+
+    /* So với các kịch bản CÙNG NHÓM — so với toàn bảng thì nhóm AML luôn
+       thắng nhóm khác, không nói lên gì. */
+    var cungNhom = d.kb.filter(function (k) { return k.nhom === kb.nhom; })
+                       .sort(function (a, b) { return b.alert - a.alert; });
+    var hangNhom = cungNhom.findIndex(function (k) { return k.ten === kb.ten; }) + 1;
+
+    var t = H.do_tap_trung_kich_ban({ kich_ban: kb.ten });
+    var tt = (t.danh_sach && t.danh_sach[0]) || {};
+
+    /* Phán quyết: gộp mức rủi ro + độ tập trung + xu hướng thành một câu
+       dứt khoát, để model không phải tự đoán. */
+    var diem = muc ? muc.diem_uu_tien : 0;
+    var phan = diem >= 70 ? "ĐÁNG LO — nên điều tra sớm"
+             : diem >= 55 ? "CẦN THEO DÕI"
+             : diem >= 40 ? "BÌNH THƯỜNG"
+             : "ÍT RỦI RO";
+
+    return {
+      _mo_ta: "Đánh giá kịch bản: " + kb.ten,
+      kich_ban: kb.ten, nhom: kb.nhom, muc: kb.lv, diem_goc: kb.sc,
+      tong_alert: kb.alert, so_khach: kb.kh,
+      alert_moi_khach: lam(kb.alert / (kb.kh || 1), 1),
+      do_tap_trung_pc: tt.ty_le_alert_tu_10pc_khach_dong_nhat,
+      nhan_dinh_tap_trung: tt.muc_do_tap_trung,
+      trung_vi_tap_trung_toan_bang: t.trung_vi_toan_bang,
+      xu_huong_nua_sau_pc: muc ? muc.xu_huong_nua_sau_pc : null,
+      hang_uu_tien: hang > 0 ? hang + "/" + (uu.danh_sach || []).length : null,
+      hang_trong_nhom: hangNhom + "/" + cungNhom.length + " (theo alert)",
+      PHAN_QUYET: phan,
+      ly_do: muc ? muc.vi_sao : null,
+      _cach_tra_loi: "Trả lời thẳng bằng PHAN_QUYET rồi mới giải thích. " +
+        "Người ta hỏi 'có đáng lo không' thì cần một câu trả lời dứt khoát, " +
+        "không phải một mớ số."
+    };
+  };
+
+  /* Không dự báo được tương lai, nhưng mô tả được đà gần đây — đó mới là
+     thứ trả lời được cho câu "sắp tới thế nào". */
+  H.xu_huong_gan_day = function (ts) {
+    ts = ts || {};
+    var d = duLieu();
+    var n = Math.max(3, Math.min(+ts.so_ngay || 14, d.tong.nd));
+    var i0 = d.tong.nd - n;
+    var v = [];
+    for (var i = i0; i < d.tong.nd; i++) {
+      v.push({ ngay: d.days[i], alert: d.ngay[i].alert });
+    }
+    var nua = Math.floor(n / 2);
+    var dau = v.slice(0, nua).reduce(function (a, x) { return a + x.alert; }, 0) / nua;
+    var sau = v.slice(nua).reduce(function (a, x) { return a + x.alert; }, 0) /
+              (n - nua);
+    var doi = dau > 0 ? (sau - dau) / dau * 100 : 0;
+    var da = doi > 20 ? "ĐANG TĂNG" : doi < -20 ? "ĐANG GIẢM" : "ĐI NGANG";
+
+    return {
+      _mo_ta: "Đà " + n + " ngày gần nhất (KHÔNG phải dự báo)",
+      cac_ngay: v,
+      trung_binh_nua_dau: lam(dau, 0),
+      trung_binh_nua_sau: lam(sau, 0),
+      thay_doi_pc: lam(doi, 1),
+      DA_HIEN_TAI: da,
+      _cach_tra_loi: "Đây là ĐÀ ĐÃ QUA, không phải dự báo. Nếu người dùng " +
+        "hỏi 'tuần tới thế nào', hãy nói rõ là dữ liệu không dự báo được " +
+        "tương lai, rồi mô tả đà gần đây để họ tự suy xét."
+    };
+  };
+
+  /* (Đã có thamSoDiem() ở đầu file — nó đọc cả ô r/k/ngưỡng người dùng
+     đang kéo trên dashboard và trả kèm mac_dinh. Tôi từng định nghĩa một
+     hàm TRÙNG TÊN ở đây, đè mất bản gốc và làm hỏng moTaKy() -> cả chatbot
+     chết. Đừng đặt lại tên đã có trong file.) */
+
+  /* Khớp tên kịch bản LINH HOẠT.
+     Model gõ tên rút gọn rất nhiều ("Blacklist B" thay vì "TB_Thuê bao PTM
+     nằm trong Blacklist B của BI"), khớp chuỗi con nguyên văn thì trượt
+     sạch và hàm báo "không tìm thấy" oan.
+     Ba mức, dừng ở mức đầu tiên tìm được:
+       1. chứa nguyên văn (bỏ dấu, bỏ hoa thường)
+       2. chứa TẤT CẢ các từ trong tên hỏi
+       3. khớp nhiều từ nhất, miễn được quá nửa */
+  function khongDau(s) {
+    return String(s || "").normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/đ/gi, "d").toLowerCase()
+      /* Gộp khoảng trắng: tên thật có chỗ dính HAI dấu cách
+         ("Blacklist  B của BI"), không gộp thì "blacklist b" trượt mức
+         khớp nguyên văn rồi rơi xuống mức đoán — và đoán nhầm sang
+         "Blacklist A". Đã mắc đúng lỗi này. */
+      .replace(/\s+/g, " ").trim();
+  }
+  function timKb(d, ten) {
+    var q = khongDau(ten).trim();
+    if (!q) return -1;
+    var i, t;
+    for (i = 0; i < d.kb.length; i++) {
+      if (khongDau(d.kb[i].ten).indexOf(q) >= 0) return i;
+    }
+    var tu = q.split(/[\s_,./]+/).filter(function (x) { return x.length > 1; });
+    if (!tu.length) return -1;
+    for (i = 0; i < d.kb.length; i++) {
+      t = khongDau(d.kb[i].ten);
+      if (tu.every(function (x) { return t.indexOf(x) >= 0; })) return i;
+    }
+    /* Mức 3 — đoán theo số từ khớp. Nguy hiểm: "blacklist a" và
+       "blacklist b" chỉ khác một ký tự, đoán sai thì trả về kịch bản KHÁC
+       mà vẫn tự tin. Nên chỉ chấp nhận khi có MỘT ứng viên tốt nhất duy
+       nhất; hoà điểm thì thà báo không tìm thấy còn hơn trả nhầm. */
+    var tot = -1, diem = 0, hoa = 0;
+    for (i = 0; i < d.kb.length; i++) {
+      t = khongDau(d.kb[i].ten);
+      var n = tu.filter(function (x) { return t.indexOf(x) >= 0; }).length;
+      if (n > diem) { diem = n; tot = i; hoa = 1; }
+      else if (n === diem && n > 0) hoa++;
+    }
+    return (hoa === 1 && diem > tu.length / 2) ? tot : -1;
+  }
+  function chuanNgayTs(s) {
+    s = String(s || "").trim();
+    var m = s.match(/^\d{4}-\d{2}-\d{2}/);
+    if (m) return m[0];
+    var d = duLieu();
+    m = s.match(/^(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{4}))?$/);
+    if (m) {
+      return (m[3] || d.days[0].slice(0, 4)) + "-" +
+             ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2);
+    }
+    return s;
+  }
+
   /* ══════════════════ MÔ TẢ CHO LLM ══════════════════ */
   var MO_TA = {
     tong_quan: "Bức tranh chung cả kỳ: tổng alert, khách, kịch bản, ngày cao nhất",
@@ -1333,6 +1674,11 @@ window.F2TriThuc = (function () {
     thong_ke_nhom: "Alert/khách/kịch bản theo nhóm nghiệp vụ. Tham số: ngay (một ngày) hoặc tu + den (khoảng ngày). Không truyền = toàn kỳ",
     nhom_im_lang: "Nhóm nghiệp vụ không có alert nào",
     nhom_theo_ngay: "Một nhóm biến động qua các ngày. Tham số: nhom",
+    tinh_diem_gia_dinh: "Tính điểm Impact cho một trường hợp GIẢ ĐỊNH: khách dính những kịch bản nào, mỗi cái mấy lần, thì ra bao nhiêu điểm và mức gì. Dùng khi hỏi 'khách dính 3 kịch bản Low thì mấy điểm', 'nếu bị bắn 5 lần cùng rule X thì sao'. Tham số: kich_ban=[{ten:'...', so_lan:2}, ...]. CÓ công thức, ĐỪNG từ chối câu hỏi kiểu này.",
+    giai_thich_diem: "Vì sao một khách CÓ THẬT được chừng đó điểm — phân rã từng kịch bản, từng lần lặp. Tham số: ma_khach (bắt buộc), ngay (tùy chọn), n.",
+    uu_tien_dieu_tra: "Xếp hạng kịch bản nên điều tra trước, cân BỐN yếu tố: mức rủi ro 35% + độ tập trung 30% + xu hướng 20% + khối lượng 15%. Dùng khi hỏi 'nên ưu tiên gì', 'điều tra cái nào trước', 'cái nào đáng lo nhất'. ĐỪNG chỉ chọn kịch bản nhiều alert nhất — nhiều alert mà rải đều thì không cho đầu mối nào. Mỗi dòng có trường vi_sao, phải dùng nó để giải thích.",
+    danh_gia_kich_ban: "Phán quyết một kịch bản CÓ ĐÁNG LO KHÔNG, kèm mốc so sánh (hạng ưu tiên, hạng trong nhóm, độ tập trung so trung vị). Dùng khi hỏi 'cái này có đáng lo không', 'X có nghiêm trọng không'. Trả lời thẳng bằng trường PHAN_QUYET rồi mới giải thích. Tham số: kich_ban.",
+    xu_huong_gan_day: "Đà alert những ngày gần nhất (KHÔNG phải dự báo). Dùng khi hỏi 'sắp tới thế nào', 'đang tăng hay giảm'. Với câu hỏi về TƯƠNG LAI, phải nói rõ dữ liệu không dự báo được, rồi mô tả đà đã qua. Tham số: so_ngay (mặc định 14).",
     kich_ban_di_cung_nhau: "Cặp kịch bản nào hay nổ cùng MỘT khách trong cùng ngày. Dùng khi hỏi: hai rule có trùng nhau không, kịch bản nào đi kèm kịch bản nào, tổ hợp nào là thủ đoạn có cấu trúc. Xếp theo lift (dày gấp mấy lần mức ngẫu nhiên), KHÔNG phải theo số lượt — hai rule đông alert thì đương nhiên hay gặp nhau. Tham số: n (số cặp, mặc định 10), toi_thieu (sàn số lượt, mặc định 20).",
     do_tap_trung_kich_ban: "Alert của kịch bản dồn vào ít khách hay rải đều. Dùng khi hỏi: rule nào bắn vào vài đối tượng, rule nào quét rộng, alert có tập trung không. Tham số: kich_ban (tên, để trống thì xếp hạng tất cả), n.",
     so_sanh_hai_ky: "So HAI KHOẢNG THỜI GIAN với nhau: kịch bản nào tăng/giảm mạnh nhất, cái gì mới xuất hiện, cái gì tắt hẳn. Dùng khi hỏi 'tháng 8 so tháng 7', 'tuần này so tuần trước'. Tham số BẮT BUỘC đủ bốn: tu_a, den_a (kỳ mốc), tu_b, den_b (kỳ đang xét). Mọi so sánh theo trung bình mỗi ngày nên hai kỳ lệch số ngày vẫn đúng.",

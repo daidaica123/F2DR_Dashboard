@@ -596,6 +596,23 @@ html{scroll-behavior:smooth}
 .cy .cyt b{color:var(--fg);font-weight:600}
 .cy .cyd{font-size:10px;color:var(--faint);margin-top:1px}
 .cy-none{grid-column:1/-1;color:var(--dim);font-size:11.5px;padding:6px 2px}
+/* Điểm rủi ro trên mỗi thẻ — cho biết vì sao thẻ này đứng trên thẻ kia,
+   thay vì để người đọc đoán thứ tự là ngẫu nhiên hay có ý. */
+.cy-diem{
+  margin-left:auto; font-family:var(--mono); font-size:10px; font-weight:700;
+  color:var(--cc); background:color-mix(in srgb, var(--cc) 14%, transparent);
+  border:1px solid color-mix(in srgb, var(--cc) 34%, transparent);
+  border-radius:20px; padding:1px 7px; flex:none; letter-spacing:.02em;
+}
+/* Nút xổ toàn bộ danh sách — chiếm trọn hàng cuối của lưới */
+.cy-more{grid-column:1/-1;display:flex;justify-content:center;padding:2px 0 0}
+.cy-more button{
+  background:none;border:1px dashed var(--line2);color:var(--dim);
+  font-size:11px;padding:6px 16px;border-radius:20px;cursor:pointer;
+  font-family:var(--body);transition:.13s;
+}
+.cy-more button:hover{border-color:var(--accent);color:var(--accent);
+                      border-style:solid}
 
 /* đường xu hướng tí hon dùng chung cho mục ④ và ⑤ */
 /* display PHAI dat lai: trang co luat chung cho svg (display:flex) de ve
@@ -1886,10 +1903,101 @@ function spark(v, mau, w, h){
 /* ───────── ⚑ điều cần chú ý ─────────
    Tự rút kết luận từ dữ liệu kỳ hiện tại. Mọi ngưỡng đều so tương đối với
    chính kỳ đó, không viết cứng con số nào — kỳ sau dữ liệu khác vẫn đúng. */
+/* ═══════════ CHẤM ĐIỂM RỦI RO CHO MỘT PHÁT HIỆN ═══════════
+   Bản cũ có sáu "khe" cố định, mỗi khe lấy cái đứng đầu loại của nó, rồi
+   cắt bốn cái đầu THEO THỨ TỰ VIẾT CODE. Hậu quả: FRESO có đúng 1 alert
+   của 1 khách vẫn lọt vào vì "tập trung 100%", trong khi AML dồn 3 khách
+   và tăng 1219% thì không có khe nào để lọt.
+
+   Giờ mọi phát hiện đi chung một thang điểm 0–100, xếp hạng rồi mới cắt.
+   Bốn trục, nhân với nhau chứ không cộng — thiếu hẳn một trục thì phải
+   kéo tổng xuống, vì "tăng 500%" trên nền 2 alert không phải rủi ro.
+
+     nghiemTrong  mức Low/Medium/High/Very High của kịch bản
+     doLech       lệch bao nhiêu so với chính nó thường ngày
+     quyMo        đủ lớn để đáng bận tâm chưa (chặn nhiễu số bé)
+     dauHieu      có dấu hiệu nghiệp vụ thật không (dồn cục, tái phạm…)  */
+const DIEM_MUC = {'Low':25, 'Medium':50, 'High':80, 'Very High':100};
+
+function diemRuiRo(o){
+  /* Quy mô: thang loga — 10 alert khác 100 alert rất nhiều, nhưng 10.000
+     với 20.000 thì gần như nhau về mức độ đáng chú ý. */
+  const qm = o.quyMo == null ? 50
+    : Math.max(0, Math.min(100, Math.log10(Math.max(1, o.quyMo)) / 4 * 100));
+  const ng = o.nghiemTrong == null ? 50 : o.nghiemTrong;
+  const dl = o.doLech == null ? 50 : Math.max(0, Math.min(100, o.doLech));
+  const dh = o.dauHieu == null ? 50 : Math.max(0, Math.min(100, o.dauHieu));
+
+  /* Chặn cứng nhiễu số bé: dưới ngưỡng thì dù lệch bao nhiêu cũng không
+     phải rủi ro. Đây chính là chỗ FRESO 1 alert bị loại. */
+  if(o.quyMo != null && o.quyMo < (o.sanQuyMo == null ? 20 : o.sanQuyMo))
+    return 0;
+
+  return Math.round(ng*0.35 + dh*0.28 + dl*0.22 + qm*0.15);
+}
+
+/* Vẽ một danh sách phát hiện đã chấm điểm. Dùng chung cho cả hai tab. */
+function veChuY(ds, hopId, subId, gioiHan, choMoRong){
+  ds.sort((a,b)=> b.diem - a.diem);
+  const dat = ds.filter(x=>x.diem > 0);
+  const hien = dat.slice(0, gioiHan);
+  const con = dat.length - hien.length;
+
+  const oHtml = o=>`<div class="cy" style="--cc:${o.c}">
+      <div class="cyh"><span class="cyk">${o.k}</span>
+        <span class="cyv">${o.v}</span>
+        <span class="cy-diem" title="Điểm rủi ro ${o.diem}/100 — gộp mức nghiêm trọng, độ lệch, quy mô và dấu hiệu nghiệp vụ">${o.diem}</span></div>
+      <div class="cyt">${o.t}</div>
+      <div class="cyd">${o.d}</div></div>`;
+
+  const box = $(hopId);
+  if(!dat.length){
+    box.innerHTML = `<div class="cy-none">Không có dấu hiệu rủi ro nào vượt
+      ngưỡng đáng chú ý trong phạm vi này.</div>`;
+    return dat;
+  }
+  box.innerHTML = hien.map(oHtml).join('') +
+    (choMoRong && con > 0
+      ? `<div class="cy-more" id="${hopId}-more">
+           <button onclick="moChuY('${hopId}')">Xem tất cả ${dat.length} điểm
+             (còn ${con})</button></div>`
+      : '');
+  if(choMoRong) box._tatCa = dat.map(oHtml).join('');
+  return dat;
+}
+
+function moChuY(hopId){
+  const box = $(hopId);
+  if(!box || !box._tatCa) return;
+  box.innerHTML = box._tatCa +
+    `<div class="cy-more"><button onclick="renderChuY()">Thu gọn</button></div>`;
+}
+
 function renderChuY(){
   const nd = D.tong.nd, ds = [];
   const alertNgay = D.ngay.map(x=>x.alert);
   const tb = D.tong.tbNgay;
+
+  /* Độ tập trung của từng kịch bản — dùng cho nhiều phát hiện bên dưới.
+     Alert dồn vào vài khách là dấu hiệu điều tra được ngay; rải đều hàng
+     nghìn khách thường là rule quét rộng, không cho đầu mối nào. */
+  const tapTrung = {};
+  D.kb.forEach((k,ki)=>{ tapTrung[ki] = {tong:0, theoKh:{}}; });
+  D.picks.forEach((pk,li)=>{
+    for(let w=0; w<pk.length; w+=2){
+      const o = tapTrung[pk[w]], kh = D.luotKh[li];
+      o.tong += pk[w+1];
+      o.theoKh[kh] = (o.theoKh[kh]||0) + pk[w+1];
+    }
+  });
+  Object.keys(tapTrung).forEach(ki=>{
+    const o = tapTrung[ki];
+    const v = Object.values(o.theoKh).sort((a,b)=>b-a);
+    o.soKh = v.length;
+    const top = Math.max(1, Math.round(v.length*0.1));
+    o.pcTop = o.tong ? v.slice(0,top).reduce((a,b)=>a+b,0)/o.tong*100 : 0;
+    o.nangNhat = v[0] || 0;
+  });
 
   /* 1. Ngày vọt cao so với mặt bằng chính kỳ này */
   let iMax = 0;
@@ -1898,10 +2006,49 @@ function renderChuY(){
   if(boiMax >= 1.15){
     ds.push({c:'var(--orange)', k:'Ngày cao nhất',
       v:`${boiMax.toFixed(2)}× TB`,
+      diem: diemRuiRo({nghiemTrong:55, doLech:(boiMax-1)*100,
+                       quyMo:alertNgay[iMax], dauHieu:45}),
       t:`<b>${dLab(D.days[iMax])}</b> có <b>${fmt(alertNgay[iMax])}</b> alert, ` +
         `cao hơn mức trung bình <b>${fmt(Math.round(tb))}</b>/ngày của kỳ.`,
       d:'Xem mục ③ để biết ngày đó lệch ở kịch bản nào.'});
   }
+
+  /* 1b. RỦI RO CAO DỒN VÀO ÍT KHÁCH — thứ đáng điều tra nhất mà bản cũ
+         hoàn toàn bỏ sót. Kịch bản mức High/Very High, alert dồn cục vào
+         một nhúm khách: có đầu mối cụ thể để đi tra ngay. */
+  D.kb.forEach((k,ki)=>{
+    const o = tapTrung[ki];
+    if(!o || o.tong < 50 || o.soKh > 60) return;
+    if(o.pcTop < 70) return;
+    const lv = DIEM_MUC[k.lv] || 50;
+    if(lv < 80) return;                    // chỉ High trở lên
+    ds.push({c:'var(--vh)', k:'Rủi ro cao, dồn ít khách',
+      v:`${o.soKh} khách`,
+      diem: diemRuiRo({nghiemTrong:lv, doLech:o.pcTop, quyMo:o.tong,
+                       dauHieu:92, sanQuyMo:50}),
+      t:`<b>${esc(k.ten)}</b> — <b>${fmt(o.tong)}</b> alert nhưng chỉ từ ` +
+        `<b>${fmt(o.soKh)}</b> khách (${(o.tong/o.soKh).toFixed(0)} alert/khách, ` +
+        `khách nặng nhất ${fmt(o.nangNhat)} alert).`,
+      d:'Ít người mà bắn dày, mức ' + k.lv + ' — có đầu mối cụ thể, tra được ngay.'});
+  });
+
+  /* 1c. KỊCH BẢN NẶNG ĐANG NÓNG LÊN — mức cao + xu hướng tăng mạnh.
+         Khác mục 2 ở chỗ mục 2 lấy cái tăng mạnh nhất bất kể mức độ. */
+  D.kb.forEach((k,ki)=>{
+    const lv = DIEM_MUC[k.lv] || 50;
+    if(lv < 80 || k.alert < 100) return;
+    const t = xuHuong(k.v);
+    if(!t || t.dir <= 0 || t.pc < 60) return;
+    const o = tapTrung[ki] || {};
+    ds.push({c:'var(--red)', k:'Rủi ro cao đang tăng',
+      v:`▲ ${t.pc>=999?'mới':t.pc.toFixed(0)+'%'}`,
+      diem: diemRuiRo({nghiemTrong:lv, doLech:t.pc/3, quyMo:k.alert,
+                       dauHieu: o.pcTop >= 70 ? 88 : 72, sanQuyMo:100}),
+      t:`<b>${esc(k.ten)}</b> (mức <b>${k.lv}</b>) — nửa sau kỳ ` +
+        `<b>${t.sau.toFixed(0)}</b> alert/ngày, nửa đầu ${t.dau.toFixed(0)}.` +
+        (o.pcTop >= 70 ? ` Alert dồn vào ${fmt(o.soKh)} khách.` : ''),
+      d:'Mức rủi ro cao mà đang nóng lên — ưu tiên xử lý.'});
+  });
 
   /* 2. Kịch bản tăng mạnh nhất — bỏ qua kịch bản quá ít alert cho đỡ nhiễu */
   const nguongOn = Math.max(20, D.tong.alert*0.004);
@@ -1914,6 +2061,9 @@ function renderChuY(){
   if(kbTang && kbTang.t.pc >= 25){
     ds.push({c:'var(--red)', k:'Tăng mạnh nhất',
       v:`▲ ${kbTang.t.pc>=999?'mới':kbTang.t.pc.toFixed(0)+'%'}`,
+      diem: diemRuiRo({nghiemTrong: DIEM_MUC[kbTang.k.lv] || 50,
+                       doLech: kbTang.t.pc/3, quyMo: kbTang.k.alert,
+                       dauHieu:70, sanQuyMo:nguongOn}),
       t:`<b>${esc(kbTang.k.ten)}</b> — nửa sau kỳ trung bình ` +
         `<b>${kbTang.t.sau.toFixed(0)}</b> alert/ngày, nửa đầu ` +
         `<b>${kbTang.t.dau.toFixed(0)}</b>.`,
@@ -1930,8 +2080,14 @@ function renderChuY(){
            truoc.reduce((a,b)=>a+b,0) >= nguongOn;
   }).sort((a,b)=>b.alert-a.alert);
   if(imLang.length){
+    /* Tắt hẳn thường là hụt dữ liệu chứ không phải rủi ro giảm — nguy hiểm
+       vì nó làm ta tưởng đã yên. Kịch bản mức càng cao thì càng phải soi. */
+    const lvIm = Math.max(...imLang.map(k=>DIEM_MUC[k.lv]||50));
     ds.push({c:'var(--yellow)', k:'Im lặng bất thường',
       v:`${imLang.length} kịch bản`,
+      diem: diemRuiRo({nghiemTrong:lvIm, doLech:85,
+                       quyMo:imLang.reduce((a,k)=>a+k.alert,0),
+                       dauHieu:80, sanQuyMo:nguongOn}),
       t:`<b>${esc(imLang[0].ten)}</b>` +
         (imLang.length>1 ? ` và ${imLang.length-1} kịch bản khác` : '') +
         ` bắn đều cả kỳ rồi <b>tắt hẳn</b> ngày ${dLab(D.days[nd-1])}.`,
@@ -1953,6 +2109,10 @@ function renderChuY(){
     ds.push({c: len?'var(--red)':'var(--green)',
       k: len?'Nhóm tăng mạnh':'Nhóm giảm mạnh',
       v: `${len?'▲':'▼'} ${Math.abs(nhTop.t.pc).toFixed(0)}%`,
+      /* Nhóm GIẢM không phải rủi ro — cho điểm thấp hẳn để nó không chiếm
+         chỗ của phát hiện thật. Vẫn giữ trong danh sách đầy đủ. */
+      diem: diemRuiRo({nghiemTrong: len?60:25, doLech:Math.abs(nhTop.t.pc)/3,
+                       quyMo:nhTop.n.alert, dauHieu: len?60:20}),
       t:`Nhóm <b>${esc(nhomNgan(nhTop.n.ten))}</b> (${fmt(nhTop.n.alert)} alert, ` +
         `${pc(nhTop.n.alert, D.tong.alert).toFixed(0)}% toàn kỳ) ${len?'tăng':'giảm'} ` +
         `so với nửa đầu kỳ.`,
@@ -1961,11 +2121,20 @@ function renderChuY(){
 
   /* 5. Kịch bản bắn dày — nhiều alert nhưng dồn vào rất ít khách, thường là
         rule bị lặp chứ không phải nhiều người vi phạm */
-  const day = D.kb.filter(k=>k.flagDay).sort((a,b)=>b.apk-a.apk);
+  /* Lọc bỏ kịch bản quá nhỏ TRƯỚC khi xếp: "100% alert dồn vào 1 khách"
+     nghe rất đáng ngờ, nhưng nếu cả kịch bản chỉ có 1 alert thì đó là
+     nhiễu thống kê thuần tuý. Chính chỗ này từng đẩy FRESO (1 alert /
+     1 khách) lên mục Đáng chú ý. */
+  const day = D.kb.filter(k=>k.flagDay && k.alert >= nguongOn)
+                  .sort((a,b)=>b.apk-a.apk);
   if(day.length){
     const t0 = day[0];
     ds.push({c:'var(--accent)', k:'Nghi lặp rule',
       v:`${day.length} kịch bản`,
+      /* Đây là vấn đề CHẤT LƯỢNG RULE, không phải rủi ro gian lận — cho
+         điểm vừa phải để nó không đè lên các dấu hiệu rủi ro thật. */
+      diem: diemRuiRo({nghiemTrong:40, doLech:Math.min(100, t0.apk*4),
+                       quyMo:t0.alert, dauHieu:35, sanQuyMo:nguongOn}),
       t:`<b>${esc(t0.ten)}</b> bắn <b>${t0.apk.toFixed(1)}</b> alert mỗi khách ` +
         `(${fmt(t0.alert)} alert / ${fmt(t0.kh)} khách).`,
       d:'Alert nhiều mà ít người — ứng viên tối ưu rule.'});
@@ -1976,23 +2145,67 @@ function renderChuY(){
   if(nangDs){
     ds.push({c:'var(--vh)', k:'Tái phạm nặng',
       v:fmt(nangDs),
+      diem: diemRuiRo({nghiemTrong:75, doLech:60, quyMo:nangDs, dauHieu:80}),
       t:`<b>${fmt(nangDs)}</b> khách dính alert từ <b>${Math.min(5,nd)}</b> ` +
         `ngày trở lên trong ${nd} ngày.`,
       d:'Nhóm này không bao giờ đủ 30 ngày sạch để được ân xá.'});
   }
 
-  const hien = ds.slice(0,4);
-  $('chuySub').textContent = hien.length
-    ? `${hien.length} điều rút ra từ kỳ ${dLab(D.tong.d0)} – ${dLab(D.tong.d1)} · tự tính lại mỗi lần nạp dữ liệu mới`
-    : 'Kỳ này không có gì bất thường nổi bật';
-  $('chuy').innerHTML = hien.length
-    ? hien.map(o=>`<div class="cy" style="--cc:${o.c}">
-         <div class="cyh"><span class="cyk">${o.k}</span>
-           <span class="cyv">${o.v}</span></div>
-         <div class="cyt">${o.t}</div>
-         <div class="cyd">${o.d}</div></div>`).join('')
-    : `<div class="cy-none">Không có kịch bản nào tăng vọt, tắt đột ngột hay
-       bắn dày bất thường trong kỳ này.</div>`;
+  /* 7. KHÁCH ĐIỂM VERY HIGH — người cụ thể vượt ngưỡng Impact cao nhất.
+        Đây là đối tượng đi tra được ngay, đáng lên đầu hơn mọi thống kê. */
+  const nguongVH = thr()[2];
+  const vhDs = (D.topkh||[]).filter(x=>{
+    const p = thamSoRK();
+    let cao = 0;
+    Object.keys(x.ng||{}).forEach(j=>{
+      const s = diemNgay(x.ng[j], p.r, p.k);
+      if(s > cao) cao = s;
+    });
+    x._diemCao = cao;
+    return cao >= nguongVH;
+  }).sort((a,b)=>b._diemCao-a._diemCao);
+  if(vhDs.length){
+    const t0 = vhDs[0];
+    ds.push({c:'var(--vh)', k:'Khách vượt ngưỡng Very High',
+      v:`${fmt(vhDs.length)} khách`,
+      diem: diemRuiRo({nghiemTrong:100, doLech:85,
+                       quyMo:vhDs.reduce((a,x)=>a+x.alert,0), dauHieu:95}),
+      t:`<b>${fmt(vhDs.length)}</b> khách chạm mức <b>Very High</b> ` +
+        `(≥ ${nguongVH} điểm). Cao nhất <b>${hienDiem(t0._diemCao)}</b> điểm ` +
+        `với ${fmt(t0.alert)} alert trên ${t0.nkb} kịch bản.`,
+      d:'Danh sách cụ thể ở mục ⑥ — đi tra được ngay.'});
+  }
+
+  /* 8. KHÁCH DÍNH NHIỀU KỊCH BẢN KHÁC NHAU — dấu hiệu hành vi có cấu trúc,
+        khác hẳn với bị một rule bắn lặp nhiều lần. */
+  const daKb = (D.topkh||[]).filter(x=>x.nkb >= 4)
+                            .sort((a,b)=>b.nkb-a.nkb || b.alert-a.alert);
+  if(daKb.length){
+    const t0 = daKb[0];
+    ds.push({c:'var(--purple)', k:'Dính nhiều kịch bản',
+      v:`${fmt(daKb.length)} khách`,
+      diem: diemRuiRo({nghiemTrong:85, doLech:Math.min(100, t0.nkb*18),
+                       quyMo:daKb.reduce((a,x)=>a+x.alert,0), dauHieu:90}),
+      t:`<b>${fmt(daKb.length)}</b> khách dính từ <b>4 kịch bản khác nhau</b> ` +
+        `trở lên. Nhiều nhất: <b>${t0.nkb} kịch bản</b>, ${fmt(t0.alert)} alert.`,
+      d:'Nhiều rule cùng bắt một người — hành vi có cấu trúc, không phải lặp rule.'});
+  }
+
+  const dat = veChuY(ds, 'chuy', 'chuySub', 4, true);
+  $('chuySub').innerHTML = dat.length
+    ? `<b>${dat.length}</b> dấu hiệu rủi ro trong kỳ ${dLab(D.tong.d0)} – ` +
+      `${dLab(D.tong.d1)} · xếp theo <b>điểm rủi ro</b> (mức nghiêm trọng, ` +
+      `độ lệch, quy mô, dấu hiệu nghiệp vụ) · hiện ${Math.min(4,dat.length)} ` +
+      `điểm đáng ngại nhất`
+    : 'Kỳ này không có dấu hiệu rủi ro nào vượt ngưỡng đáng chú ý';
+}
+
+/* Tham số r/k đang đặt — đọc từ ô người dùng kéo, không cứng theo D. */
+function thamSoRK(){
+  const g = id=>{ const e=$(id); return (e && e.value!=='' && !isNaN(+e.value))
+    ? +e.value/100 : null; };
+  return {r: g('pR') != null ? g('pR') : D.r,
+          k: g('pK') != null ? g('pK') : D.k};
 }
 
 /* ───────── KPI lớn ───────── */
@@ -3008,6 +3221,9 @@ function chuYNgay(j, S){
   if(vot)
     ds.push({c:'var(--red)', k:'Tăng vọt trong ngày',
       v:'▲ '+((vot.al-vot.truoc)/vot.truoc*100).toFixed(0)+'%',
+      diem: diemRuiRo({nghiemTrong: DIEM_MUC[vot.x.lv] || 50,
+                       doLech:(vot.al-vot.truoc)/vot.truoc*100/2,
+                       quyMo:vot.al, dauHieu:75, sanQuyMo:10}),
       t:`<b>${esc(vot.x.ten)}</b> nhảy từ ${fmt(vot.truoc)} lên
          <b>${fmt(vot.al)}</b> alert so với ngày liền trước.`,
       d:'Kịch bản đang nóng lên — soi trước cái này.'});
@@ -3016,6 +3232,9 @@ function chuYNgay(j, S){
   const moi = S.kb.filter(x=>x.moi);
   if(moi.length)
     ds.push({c:'var(--accent)', k:'Lần đầu nổ', v:moi.length+' kịch bản',
+      diem: diemRuiRo({nghiemTrong: Math.max(...moi.map(x=>DIEM_MUC[x.x.lv]||50)),
+                       doLech:90, quyMo:moi.reduce((a,x)=>a+x.al,0),
+                       dauHieu:70, sanQuyMo:10}),
       t:`${moi.slice(0,2).map(x=>`<b>${esc(x.x.ten)}</b> (${fmt(x.al)} alert)`).join(', ')}${
          moi.length>2 ? ` và ${moi.length-2} cái nữa` : ''} — chưa từng nổ ngày nào
          trước đó trong kỳ.`,
@@ -3024,6 +3243,9 @@ function chuYNgay(j, S){
   /* 3. Kịch bản tắt hẳn dù trước đó nổ đều — thường là hụt dữ liệu */
   if(S.im.length)
     ds.push({c:'var(--faint)', k:'Im lặng bất thường', v:S.im.length+' kịch bản',
+      diem: diemRuiRo({nghiemTrong: Math.max(...S.im.map(x=>DIEM_MUC[x.x.lv]||50)),
+                       doLech:80, quyMo:S.im.reduce((a,x)=>a+x.tb,0),
+                       dauHieu:72, sanQuyMo:10}),
       t:`${S.im.slice(0,2).map(x=>`<b>${esc(x.x.ten)}</b> (TB ${x.tb.toFixed(0)}/ngày)`).join(', ')}
          bắn đều các ngày trước rồi tắt hẳn hôm nay.`,
       d:'Kiểm tra luồng dữ liệu trước khi kết luận rủi ro đã giảm.'});
@@ -3037,6 +3259,9 @@ function chuYNgay(j, S){
     if(Math.abs(lech) >= 20)
       ds.push({c: lech>0 ? 'var(--red)' : 'var(--green)',
         k:'Cơ cấu mức độ', v:(lech>0?'▲ ':'▼ ')+Math.abs(lech).toFixed(0)+'%',
+        diem: diemRuiRo({nghiemTrong: lech>0?80:30,
+                         doLech:Math.abs(lech), quyMo:S.alert,
+                         dauHieu: lech>0?78:25}),
         t:`Tỉ lệ lượt <b>nặng (High trở lên)</b> ngày này là
            <b>${nay.toFixed(1)}%</b>, so với <b>${tbKhac.toFixed(1)}%</b>
            bình quân các ngày còn lại.`,
@@ -3055,6 +3280,9 @@ function chuYNgay(j, S){
   if(nl && Math.abs(nl.p) >= 30)
     ds.push({c: nl.p>0 ? 'var(--orange)' : 'var(--green)',
       k:'Nhóm chuyển biến mạnh', v:(nl.p>0?'▲ ':'▼ ')+Math.abs(nl.p).toFixed(0)+'%',
+      diem: diemRuiRo({nghiemTrong: nl.p>0?58:25,
+                       doLech:Math.abs(nl.p)/2, quyMo:nl.a,
+                       dauHieu: nl.p>0?58:20}),
       t:`<b>${esc(nhomNgan(nl.ten))}</b>: ${fmt(nl.b)} → <b>${fmt(nl.a)}</b> alert
          so với ngày liền trước.`,
       d:'Xem bảng nhóm nghiệp vụ ngay dưới để biết do kịch bản nào.'});
@@ -3069,6 +3297,8 @@ function chuYNgay(j, S){
   const nguongLap = Math.max(8, Math.ceil(S.alert/S.nkh*4));
   if(xau && xau.f >= nguongLap)
     ds.push({c:'var(--yellow)', k:'Nghi chống lặp', v:fmt(xau.f)+' alert',
+      diem: diemRuiRo({nghiemTrong:38, doLech:Math.min(100,xau.f*3),
+                       quyMo:xau.f, dauHieu:32, sanQuyMo:8}),
       t:`Một khách dính <b>${fmt(xau.f)} alert</b> của riêng kịch bản
          <b>${esc(D.kb[xau.ki].ten)}</b> trong đúng ngày này, trong khi cả ngày
          trung bình chỉ ${(S.alert/S.nkh).toFixed(1)} alert/khách.`,
@@ -3084,6 +3314,10 @@ function chuYNgay(j, S){
       if(tbK && Math.abs(pcNay-tbK)/tbK >= .25)
         ds.push({c:'var(--purple)', k:'Mặt mới hay tái phạm',
           v:pcNay.toFixed(0)+'%',
+          diem: diemRuiRo({nghiemTrong: pcNay<tbK?70:45,
+                           doLech:Math.abs(pcNay-tbK)/tbK*100,
+                           quyMo:D.ngay[j].kh,
+                           dauHieu: pcNay<tbK?75:40}),
           t:`<b>${fmt(D.ngay[j].khMoi)}</b> khách lần đầu bị bắt, chiếm
              <b>${pcNay.toFixed(0)}%</b> số khách trong ngày — bình quân các ngày
              khác là ${tbK.toFixed(0)}%.`,
@@ -3091,7 +3325,11 @@ function chuYNgay(j, S){
                        : 'Chủ yếu là người đã bị bắt hôm trước — xem lại tái phạm.'});
     }
   }
-  return ds.slice(0,4);
+  /* Xep theo DIEM RUI RO roi moi cat, khong cat theo thu tu viet code.
+     Moi ngay tinh lai tu dau tren du lieu cua chinh ngay do, nen mot
+     phat hien het bat thuong la tu roi khoi top — khong dinh cung. */
+  ds.sort((a,b)=> (b.diem||0) - (a.diem||0));
+  return ds.filter(x=>(x.diem||0) > 0).slice(0,4);
 }
 /* ───────── dựng nội dung popup ───────── */
 function veNgay(j){
@@ -3137,12 +3375,13 @@ function veNgay(j){
   const cy = chuYNgay(j, S);
   const cyHtml = `<div class="mcard" style="--gc:var(--accent)">
     <h3>⚑ ĐIỀU CẦN CHÚ Ý NGÀY NÀY
-      <span>${cy.length ? cy.length+' điều rút ra, đều so tương đối với các ngày còn lại trong kỳ'
+      <span>${cy.length ? cy.length+' dấu hiệu của riêng ngày này, xếp theo điểm rủi ro — tính lại từ đầu mỗi ngày'
                         : 'ngày này không có gì lệch hẳn so với phần còn lại của kỳ'}</span></h3>
     <div class="chuy" style="margin-top:0">${cy.length
       ? cy.map(o=>`<div class="cy" style="--cc:${o.c}">
           <div class="cyh"><span class="cyk">${o.k}</span>
-            <span class="cyv">${o.v}</span></div>
+            <span class="cyv">${o.v}</span>
+            <span class="cy-diem" title="Điểm rủi ro ${o.diem}/100 — gộp mức nghiêm trọng, độ lệch, quy mô và dấu hiệu nghiệp vụ">${o.diem}</span></div>
           <div class="cyt">${o.t}</div>
           <div class="cyd">${o.d}</div></div>`).join('')
       : `<div class="cy-none">Không kịch bản nào tăng vọt, tắt đột ngột hay bắn dày

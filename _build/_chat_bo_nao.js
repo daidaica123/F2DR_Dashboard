@@ -785,6 +785,23 @@ window.F2BoNao = (function () {
 
       var lenh = [], sang = [], daKhoang = false;
 
+      /* Câu hỏi nói THẲNG muốn xem gì trên dashboard ("cho tôi xem 7 ngày
+         gần nhất ở mục ⑥") thì lái theo đúng câu chữ, không cần suy từ hàm
+         đã gọi. Bỏ dấu trước khi so vì người dùng gõ tắt rất nhiều. */
+      var ch = String(R._cauHoi || "").normalize("NFD")
+                 .replace(/[̀-ͯ]/g, "").replace(/đ/gi, "d").toLowerCase();
+      var mMuc6 = /(muc|tab|bang)\s*(6|⑥|khach)/.test(ch) ||
+                  /khach hang/.test(ch);
+      var mNgay = ch.match(/(\d{1,3})\s*ngay\s*(gan nhat|gan day|vua qua|qua)/);
+      if (mNgay) {
+        lenh.push({ viec: "n_ngay_gan_nhat",
+                    tham_so: { so_ngay: +mNgay[1], muc: mMuc6 ? 6 : 5 } });
+        daKhoang = true;
+      }
+      if (/(chi|rieng)\s*(khach\s*)?very high/.test(ch)) {
+        lenh.push({ viec: "chi_very_high", tham_so: { bat: true } });
+      }
+
       g.forEach(function (x) {
         var ts = x.tham_so || {}, kq = x.ketQua || {};
 
@@ -1653,6 +1670,7 @@ TT.moTaKy() + "\n\n" + GIOI_HAN + "\n\n" +
                            " chuỗi giống thông tin định danh khỏi câu trả lời");
             ghiLog("!! Cắt " + q.daCat.length + " chuỗi định danh ở đầu ra");
           }
+          R._cauHoi = cauHoi;      /* suyLenhLai đọc câu chữ để lái đúng mục */
           R.lai = suyLenhLai(R);
           R.giay = (Date.now() - t0) / 1000;
           return R;

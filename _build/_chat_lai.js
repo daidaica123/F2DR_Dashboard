@@ -30,7 +30,8 @@ window.F2Lai = (function () {
     try { return (0, eval)(ten); } catch (e) { return undefined; }
   }
   function co() {
-    return !!$("m5") && !!$("matTu") && typeof window.renderMat === "function";
+    /* Cửa điều khiển F2DK là thứ duy nhất cần — nó tự lo mọi ô bên trong. */
+    return !!window.F2DK && !!$("m5");
   }
 
   /* ───────── tô sáng ─────────
@@ -147,67 +148,78 @@ window.F2Lai = (function () {
   /* ───────── các hành động ─────────
      Mỗi hành động trả về một câu ngắn mô tả nó vừa làm gì, để hiện trong
      khung chat — người dùng phải biết trang vừa bị đổi cái gì. */
+  /* Dashboard mở sẵn cửa điều khiển ở window.F2DK — mỗi việc một hàm đặt
+     THẲNG trạng thái và trả về câu mô tả. Gọi qua đó thay vì tự mò từng id
+     ô rồi đoán thứ tự gọi hàm: sai một bước là bảng và nhãn nút lệch nhau. */
+  function dk() { return window.F2DK || null; }
+
   var VIEC = {
 
     /* Đặt khoảng ngày ở mục ⑤ rồi cuộn tới đó. */
     khoang_ngay: function (ts) {
       var tu = chuanNgay(ts.tu), den = chuanNgay(ts.den);
-      if (!tu || !den) return null;
-      if (bien("CACH_NGAY") !== "khoang" &&
-          typeof window.doiCachNgay === "function") window.doiCachNgay();
-      $("matTu").value = tu;
-      $("matDen").value = den;
-      if ($("matNhanh")) $("matNhanh").value = "";
-      if (typeof window.onKhoang === "function") window.onKhoang();
-      cuonToi("m5");
-      return "đặt khoảng " + nhan(tu) + " – " + nhan(den) + " ở mục ⑤";
+      if (!tu || !den || !dk()) return null;
+      return dk().mucNam({ tu: tu, den: den });
+    },
+
+    /* N ngày gần nhất — ở mục ⑤ hoặc ⑥ tuỳ câu hỏi. */
+    n_ngay_gan_nhat: function (ts) {
+      if (!dk()) return null;
+      var n = Math.max(1, +(ts.so_ngay || ts.n || 7));
+      return String(ts.muc) === "6" ? dk().mucSau({ soNgay: n })
+                                    : dk().mucNam({ soNgay: n });
+    },
+
+    /* Đặt khoảng ngày / số ngày ở mục ⑥ (bảng khách hàng). */
+    khach_theo_ngay: function (ts) {
+      if (!dk()) return null;
+      if (ts.so_ngay) return dk().mucSau({ soNgay: +ts.so_ngay });
+      var tu = chuanNgay(ts.tu), den = chuanNgay(ts.den);
+      if (tu || den) return dk().mucSau({ tu: tu, den: den });
+      if (ts.toan_ky) return dk().mucSau({ toanKy: true });
+      return null;
+    },
+
+    /* Chỉ xem khách chạm Very High. */
+    chi_very_high: function (ts) {
+      if (!dk()) return null;
+      return dk().mucSau({ chiVeryHigh: ts.bat !== false });
     },
 
     /* Lọc theo tên kịch bản ở mục ⑤. */
     loc_kich_ban: function (ts) {
-      if (!$("qKB")) return null;
-      $("qKB").value = ts.tu_khoa || "";
-      if (typeof window.renderMat === "function") window.renderMat();
-      cuonToi("m5");
-      return ts.tu_khoa ? 'lọc kịch bản chứa "' + ts.tu_khoa + '" ở mục ⑤'
-                        : "bỏ lọc kịch bản";
+      if (!dk()) return null;
+      return dk().mucNam({ timKichBan: ts.tu_khoa || "" });
     },
 
     /* Lọc theo mã khách ở mục ⑥. */
     loc_khach: function (ts) {
-      if (!$("qKH")) return null;
-      $("qKH").value = ts.tu_khoa || "";
-      if (typeof window.renderTopKH === "function") window.renderTopKH();
-      cuonToi("m6");
-      return ts.tu_khoa ? 'tìm khách "' + String(ts.tu_khoa).slice(0, 14) +
-                          '…" ở mục ⑥' : "bỏ lọc khách";
+      if (!dk()) return null;
+      return dk().mucSau({ timKhach: ts.tu_khoa || "" });
+    },
+
+    /* Hiện bao nhiêu khách ở mục ⑥. */
+    top_khach: function (ts) {
+      if (!dk() || !ts.n) return null;
+      return dk().mucSau({ top: +ts.n });
     },
 
     /* Thu gọn cột ngày — hợp khi vừa nói về tổng cả kỳ. */
     thu_gon: function (ts) {
-      if (typeof window.doiThuGon !== "function") return null;
-      var muon = ts.bat !== false;
-      if (bien("THU_GON") !== muon) window.doiThuGon();
-      cuonToi("m5");
-      return muon ? "thu gọn cột ngày, chỉ xem tổng" : "hiện lại các cột ngày";
+      if (!dk()) return null;
+      return dk().mucNam({ thuGon: ts.bat !== false });
     },
 
     /* Gom theo nhóm nghiệp vụ. */
     gom_nhom: function (ts) {
-      if (typeof window.doiGom !== "function") return null;
-      var muon = ts.bat !== false;
-      if (bien("GOM_NHOM") !== muon) window.doiGom();
-      cuonToi("m5");
-      return muon ? "gom kịch bản theo nhóm nghiệp vụ" : "bỏ gom nhóm";
+      if (!dk()) return null;
+      return dk().mucNam({ gomNhom: ts.bat !== false });
     },
 
     /* Chỉ cuộn, không đổi gì — dùng khi câu trả lời chỉ cần chỉ chỗ. */
     cuon: function (ts) {
-      var m = { "3": "m3", "4": "m4", "5": "m5", "6": "m6", "7": "m7",
-                "8": "m8", "cong_thuc": "m1c", "phan_bo": "m2c" };
-      var id = m[String(ts.muc)] || "m5";
-      if (!cuonToi(id)) return null;
-      return "cuộn tới mục " + (ts.muc || 5);
+      if (!dk()) return null;
+      return dk().cuonToi(ts.muc || 5);
     }
   };
 
